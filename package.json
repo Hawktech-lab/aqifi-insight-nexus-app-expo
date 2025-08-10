@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "android": "react-native run-android",
-    "ios": "react-native run-ios",
-    "start": "react-native start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "start": "expo start",
     "test": "jest",
     "lint:fix": "eslint . --ext ts,tsx --fix"
   },
@@ -45,7 +45,6 @@
     "@babel/preset-env": "^7.23.0",
     "@babel/runtime": "^7.23.0",
     "@expo/metro-config": "^0.17.8",
-    "@react-native-community/cli": "^19.1.1",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.0",
     "@types/react-native": "^0.73.0",
@@ -55,7 +54,6 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "metro": "^0.82.5",
     "metro-react-native-babel-preset": "^0.77.0",
-    "react-native-cli": "^2.0.1",
     "typescript": "^5.3.3"
   }
 }
