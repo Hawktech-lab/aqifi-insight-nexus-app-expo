@@ -12,12 +12,12 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DeviceFingerprintingProvider } from './contexts/DeviceFingerprintingContext';
 
 // Screens
-import Dashboard from './screens/Dashboard';
-import Activity from './screens/Activity';
-import Surveys from './screens/Surveys';
-import Settings from './screens/Settings';
-import Auth from './screens/Auth';
-import Admin from './screens/Admin';
+import Dashboard from './pages/Dashboard';
+import Activity from './pages/Activity';
+import Surveys from './pages/Surveys';
+import Settings from './pages/Settings';
+import Auth from './pages/Auth';
+import Admin from './pages/Admin';
 
 // Types for navigation
 export type RootStackParamList = {
