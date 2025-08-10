@@ -381,7 +381,7 @@ export default function Surveys() {
                       </Button>
                     )}
                   </StyledView>
-                </StyledView>
+                </CardContent>
               </Card>
             );
           })}
@@ -446,7 +446,7 @@ export default function Surveys() {
             <StyledText className="text-gray-500">
               No surveys or tasks available at the moment. Check back later!
             </StyledText>
-          </StyledView>
+          </CardContent>
         </Card>
       )}
     </StyledView>
