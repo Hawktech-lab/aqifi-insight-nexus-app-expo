@@ -11,7 +11,7 @@
     "lint:fix": "eslint . --ext ts,tsx --fix"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "2.1.2",
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^6.5.11",
     "@react-navigation/native": "^6.1.9",
     "@react-navigation/native-stack": "^6.9.17",
@@ -26,14 +26,14 @@
     "lucide-react-native": "^0.303.0",
     "nativewind": "^2.0.11",
     "react": "^18.3.1",
-    "react-native": "^0.74.5",
+    "react-native": "^0.74.7",
     "react-native-device-info": "^14.0.4",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-permissions": "^5.4.2",
     "react-native-reanimated": "~3.17.4",
-    "react-native-safe-area-context": "5.4.0",
+    "react-native-safe-area-context": "^5.4.0",
     "react-native-screens": "~4.11.1",
-    "react-native-svg": "14.2.0",
+    "react-native-svg": "^15.11.2",
     "react-native-vector-icons": "^10.0.3",
     "tailwind-merge": "^2.2.0"
   },
