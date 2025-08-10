@@ -1,4 +1,9 @@
 {
   "name": "AQIFIInsightNexus",
-  "displayName": "AQIFI Insight Nexus"
+  "displayName": "AQIFI Insight Nexus",
+  "extra": {
+    "eas": {
+      "projectId": "4494355d-226e-4364-9c6a-41bef09d7506"
+    }
+  }
 }
