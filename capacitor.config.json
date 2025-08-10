@@ -1,0 +1,9 @@
+{
+  "appId": "com.aqifi.app",
+  "appName": "Aqifi",
+  "webDir": "dist",
+  "server": {
+    "url": "https://testapp.aqifi.com"
+  },
+  "bundledWebRuntime": false
+}

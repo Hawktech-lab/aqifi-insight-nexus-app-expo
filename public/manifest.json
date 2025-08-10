@@ -1,0 +1,25 @@
+
+{
+  "name": "Aqifi - Data Monetization Platform",
+  "short_name": "Aqifi",
+  "description": "Earn rewards by securely monetizing your data with Aqifi by Hawkrel Labs",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/lovable-uploads/444ec60d-7293-4ee4-bffe-832b45b1b464.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/lovable-uploads/444ec60d-7293-4ee4-bffe-832b45b1b464.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ]
+}

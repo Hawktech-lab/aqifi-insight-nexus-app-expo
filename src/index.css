@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Aqifi Mobile App Design System */
+@layer base {
+  :root {
+    /* Brand Colors - Aqifi */
+    --primary: 217 91% 60%; /* Azure-Indigo #3B82F6 */
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 217 91% 70%;
+    
+    --accent: 160 84% 39%; /* Mint #10B981 */
+    --accent-foreground: 0 0% 100%;
+    --accent-glow: 160 84% 49%;
+    
+    --background: 214 32% 97%; /* Slate 50 #F8FAFC */
+    --foreground: 222 84% 5%; /* Slate 900 #0F172A */
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 84% 5%;
+    --card-glass: 0 0% 100% / 0.08;
+    
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 65%;
+    
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 84% 5%;
+    
+    --destructive: 347 77% 60%; /* Rose #F43F5E */
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
+    
+    --radius: 0.75rem; /* 12px */
+    
+    /* Gradients */
+    --gradient-bg: linear-gradient(135deg, #F5F7FA 0%, #ECF1FF 100%);
+    --gradient-card: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--accent-glow)) 100%);
+    
+    /* Shadows */
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.05);
+    --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-glow: 0 0 24px hsl(var(--primary) / 0.3);
+    
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 84% 5%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 32% 97%;
+    --sidebar-accent-foreground: 222 84% 5%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    --background: 222 84% 5%; /* Slate 900 */
+    --foreground: 214 32% 97%; /* Slate 50 */
+    
+    --card: 217 33% 17%;
+    --card-foreground: 214 32% 97%;
+    --card-glass: 0 0% 0% / 0.1;
+    
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 214 32% 97%;
+    
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
+    
+    --gradient-bg: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    --gradient-card: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+    
+    --sidebar-background: 217 33% 17%;
+    --sidebar-foreground: 214 32% 97%;
+    --sidebar-accent: 217 33% 22%;
+    --sidebar-accent-foreground: 214 32% 97%;
+    --sidebar-border: 217 33% 22%;
+  }
+}
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--gradient-bg);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply backdrop-blur-md border border-white/20;
+    background: var(--gradient-card);
+    box-shadow: var(--shadow-glass);
+  }
+  
+  .card-hover {
+    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-lg;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+  
+  .gradient-subtle {
+    background: var(--gradient-bg);
+  }
+}
