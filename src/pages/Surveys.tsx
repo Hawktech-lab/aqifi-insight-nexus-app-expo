@@ -78,7 +78,7 @@ interface CardContentProps {
 const CardContent = styled(({ children, className }: CardContentProps) => (
   <StyledView className={`p-4 pt-3 ${className}`}>
     {children}
-  </CardContent>
+  </StyledView>
 ));
 
 // Replicating simplified Button component
@@ -381,7 +381,7 @@ export default function Surveys() {
                       </Button>
                     )}
                   </StyledView>
-                </CardContent>
+                </StyledView>
               </Card>
             );
           })}
@@ -433,7 +433,7 @@ export default function Surveys() {
                       </Button>
                     )}
                   </StyledView>
-                </CardContent>
+                </StyledView>
               </Card>
             );
           })}
@@ -446,7 +446,7 @@ export default function Surveys() {
             <StyledText className="text-gray-500">
               No surveys or tasks available at the moment. Check back later!
             </StyledText>
-          </CardContent>
+          </StyledView>
         </Card>
       )}
     </StyledView>
