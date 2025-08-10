@@ -5,22 +5,12 @@
   "build": {
     "development": {
       "developmentClient": false,
-      "distribution": "internal",
-      "env": {
-        "EXPO_NO_METRO_CONFIG": "1"
-      }
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "env": {
-        "EXPO_NO_METRO_CONFIG": "1"
-      }
+      "distribution": "internal"
     },
-    "production": {
-      "env": {
-        "EXPO_NO_METRO_CONFIG": "1"
-      }
-    }
+    "production": {}
   },
   "submit": {
     "production": {}
