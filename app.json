@@ -1,9 +1,32 @@
 {
-  "name": "AQIFIInsightNexus",
-  "displayName": "AQIFI Insight Nexus",
-  "extra": {
-    "eas": {
-      "projectId": "4494355d-226e-4364-9c6a-41bef09d7506"
+  "expo": {
+    "name": "AQIFI Insight Nexus",
+    "slug": "aqifi-insight-nexus-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aqifi.insightnexus"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "package": "com.aqifi.insightnexus"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }

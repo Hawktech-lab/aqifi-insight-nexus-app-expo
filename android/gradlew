@@ -1,5 +1,9 @@
 #!/usr/bin/env sh
 
+# Unset problematic environment variables that might contain malformed UTF-8 options
+unset JAVA_OPTS
+unset GRADLE_OPTS
+
 # Attempt to set APP_HOME
 PRG="$0"
 while [ -h "$PRG" ] ; do
@@ -18,9 +22,6 @@ cd "$SAVED" >/dev/null
 
 APP_NAME="Gradle"
 APP_BASE_NAME=`basename "$0"`
-
-# Add default JVM options here
-DEFAULT_JVM_OPTS="-Xmx2048m -Xms512m"
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
@@ -47,7 +48,7 @@ save () {
 }
 APP_ARGS=`save "$@"`
 
-# Collect all arguments for the java command
-set -- $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS "-Dorg.gradle.appname=$APP_BASE_NAME" -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$APP_ARGS"
+# Collect all arguments for the java command - explicitly set safe JVM options
+set -- -Xmx2048m -Xms512m "-Dorg.gradle.appname=$APP_BASE_NAME" -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$APP_ARGS"
 
 exec "$JAVACMD" "$@"
