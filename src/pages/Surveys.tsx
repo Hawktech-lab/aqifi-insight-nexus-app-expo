@@ -433,7 +433,7 @@ export default function Surveys() {
                       </Button>
                     )}
                   </StyledView>
-                </StyledView>
+                </CardContent>
               </Card>
             );
           })}
