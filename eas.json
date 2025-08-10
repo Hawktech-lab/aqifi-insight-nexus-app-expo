@@ -5,22 +5,12 @@
   "build": {
     "development": {
       "developmentClient": false,
-      "distribution": "internal",
-      "android": {
-        "gradleVersion": "8.3"
-      }
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "android": {
-        "gradleVersion": "8.3"
-      }
+      "distribution": "internal"
     },
-    "production": {
-      "android": {
-        "gradleVersion": "8.3"
-      }
-    }
+    "production": {}
   },
   "submit": {
     "production": {}
