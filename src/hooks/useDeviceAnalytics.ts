@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useDeviceFingerprinting } from '@/contexts/DeviceFingerprintingContext';
+import { useDeviceFingerprinting } from '../contexts/DeviceFingerprintingContext';
 
 export const useDeviceAnalytics = () => {
   const { trackEvent, deviceFingerprint } = useDeviceFingerprinting();
@@ -89,4 +89,6 @@ export const useDeviceAnalytics = () => {
     deviceFingerprint,
   };
 };
+
+
 

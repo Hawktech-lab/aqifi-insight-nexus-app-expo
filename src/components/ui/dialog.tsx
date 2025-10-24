@@ -2,7 +2,7 @@ import * as React from "react"
 import { Modal, View, TouchableOpacity, Text, ScrollView } from "react-native"
 import { X } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface DialogProps {
   open: boolean;

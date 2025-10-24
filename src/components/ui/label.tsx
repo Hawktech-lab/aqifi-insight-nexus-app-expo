@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Text, TextProps } from "react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 const Label = React.forwardRef<Text, TextProps>(
   ({ className, ...props }, ref) => (

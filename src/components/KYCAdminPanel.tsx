@@ -21,8 +21,8 @@ import {
   MapPin,
   X,
 } from 'lucide-react-native';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
 
 interface KYCSubmission {
   id: string;

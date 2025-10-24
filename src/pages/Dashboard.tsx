@@ -1,13 +1,15 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'; // Import core React Native components
-import { User, DollarSign, Target, Trophy } from "lucide-react-native"; // Assuming lucide-react-native is installed
+import { User, Star, Target, Trophy } from "lucide-react-native"; // Assuming lucide-react-native is installed
 import { styled } from 'nativewind'; // For applying Tailwind classes
+import { useEffect } from 'react';
 
 // Assuming useProfile, useDataStreams, useEarnings, and useAuth are already
 // adapted for React Native (their underlying logic with Supabase is usually compatible).
-import { useProfile } from '@/hooks/useProfile';
-import { useDataStreams } from '@/hooks/useDataStreams';
-import { useEarnings } from '@/hooks/useEarnings';
-import { useAuth } from '@/contexts/AuthContext';
+import { useProfile } from '../hooks/useProfile';
+// import { useDataStreams } from '../hooks/useDataStreams';
+// import { useEarnings } from '../hooks/useEarnings';
+import { useAuth } from '../contexts/AuthContext';
+import { useDeviceFingerprinting } from '../contexts/DeviceFingerprintingContext';
 
 // Styled components using Nativewind for reusability
 const StyledView = styled(View);
@@ -105,13 +107,41 @@ const KPICard = ({ title, value, icon: Icon, className }: KPICardProps) => (
 );
 
 
-export default function Dashboard() {
+export default function Dashboard({ navigation }: any) {
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useProfile();
-  const { dataStreams, loading: streamsLoading } = useDataStreams();
-  const { transactions, loading: earningsLoading } = useEarnings();
+  
+  // Safely use device fingerprinting with error handling
+  let trackEvent: ((eventType: string, eventData?: Record<string, any>) => Promise<void>) | null = null;
+  
+  try {
+    const deviceFingerprinting = useDeviceFingerprinting();
+    trackEvent = deviceFingerprinting.trackEvent;
+  } catch (error) {
+    console.warn('Device fingerprinting not available in Dashboard:', error);
+    // Provide a fallback function
+    trackEvent = async () => {
+      console.log('Device fingerprinting not available, event not tracked');
+    };
+  }
+  
+  // const { dataStreams, loading: streamsLoading } = useDataStreams();
+  // const { transactions, loading: earningsLoading } = useEarnings();
 
-  if (profileLoading || streamsLoading || earningsLoading) {
+  // Track dashboard view event
+  useEffect(() => {
+    if (trackEvent) {
+      trackEvent('dashboard_viewed', {
+        user_id: user?.id,
+        profile_completion: profile?.profile_completion_percentage || 0,
+        total_earnings: profile?.total_earnings || 0,
+      }).catch(error => {
+        console.warn('Failed to track dashboard view event:', error);
+      });
+    }
+  }, [trackEvent, user, profile]);
+
+  if (profileLoading) {
     return (
       <StyledView className="flex-1 justify-center items-center bg-gray-100">
         <ActivityIndicator size="large" color="#0000ff" />
@@ -122,11 +152,55 @@ export default function Dashboard() {
     );
   }
 
-  const activeStreams = dataStreams.filter(stream => stream.is_enabled).length;
+  // const activeStreams = dataStreams.filter(stream => stream.is_enabled).length;
   const totalEarnings = profile?.total_earnings || 0;
-  const completedSurveys = transactions.filter(t => t.transaction_type === 'survey').length;
+  // const completedSurveys = transactions.filter(t => t.transaction_type === 'survey').length;
   const profileCompletion = profile?.profile_completion_percentage || 0;
   const userName = profile?.first_name || user?.email?.split('@')[0] || 'User';
+
+  const handleEditProfile = () => {
+    if (trackEvent) {
+      trackEvent('edit_profile_clicked', {
+        user_id: user?.id,
+        profile_completion: profileCompletion,
+      }).catch(error => {
+        console.warn('Failed to track edit profile event:', error);
+      });
+    }
+    console.log('Edit Profile Pressed');
+  };
+
+  const handleQuickAction = (action: string) => {
+    if (trackEvent) {
+      trackEvent(`${action}_clicked`).catch(error => {
+        console.warn(`Failed to track ${action} event:`, error);
+      });
+    }
+    
+    // Provide meaningful actions for each quick action button
+    switch (action) {
+      case 'complete_profile_setup':
+        // Navigate to Settings tab for profile completion
+        if (navigation) {
+          navigation.navigate('Settings', { initialTab: 'profile' });
+        }
+        break;
+      case 'view_available_missions':
+        // Navigate to Surveys tab
+        if (navigation) {
+          navigation.navigate('Surveys');
+        }
+        break;
+      case 'connect_new_data_source':
+        // Navigate to Settings tab (data-streams tab is commented out)
+        if (navigation) {
+          navigation.navigate('Settings');
+        }
+        break;
+      default:
+        console.log(`Quick action: ${action}`);
+    }
+  };
 
   return (
     <StyledView className="flex-1 p-6 bg-gray-100 space-y-6">
@@ -142,20 +216,20 @@ export default function Dashboard() {
       {/* Overview KPIs */}
       <StyledView className="flex-col md:flex-row gap-4"> {/* Use flex-col and responsive classes if needed */}
         <KPICard
-          title="Total Earnings"
-          value={`$${totalEarnings.toFixed(2)}`}
-          icon={DollarSign}
+          title="Total Points"
+          value={`${totalEarnings.toFixed(0)} pts`}
+          icon={Star}
           className="bg-white shadow-md"
         />
         <KPICard
           title="Active Streams"
-          value={activeStreams}
+          value={0}
           icon={User}
           className="bg-white shadow-md"
         />
         <KPICard
           title="Surveys Completed"
-          value={completedSurveys}
+          value={0}
           icon={Trophy}
           className="bg-white shadow-md"
         />
@@ -184,7 +258,7 @@ export default function Dashboard() {
             <StyledText className="text-center text-sm text-gray-500">
               Complete your profile to unlock more earning opportunities.
             </StyledText>
-            <Button onPress={() => console.log('Edit Profile Pressed')} className="w-full">
+            <Button onPress={handleEditProfile} className="w-full">
               <Text className="text-white">Edit Profile</Text>
             </Button>
           </CardContent>
@@ -199,7 +273,7 @@ export default function Dashboard() {
             <StyledView className="h-64 flex items-center justify-center text-gray-500">
               <StyledView className="text-center">
                 <StyledView className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <DollarSign className="w-8 h-8 text-white" />
+                  <Star className="w-8 h-8 text-white" />
                 </StyledView>
                 <StyledText>Chart visualization coming soon</StyledText>
               </StyledView>
@@ -214,15 +288,15 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <StyledView className="space-y-3">
-              <Button onPress={() => console.log('Complete Profile Setup')} className="w-full justify-start h-12" variant="outline">
+              <Button onPress={() => handleQuickAction('complete_profile_setup')} className="w-full justify-start h-12" variant="outline">
                 <Target className="w-5 h-5 mr-3" />
                 <StyledText className="text-gray-700">Complete Profile Setup</StyledText>
               </Button>
-              <Button onPress={() => console.log('View Available Missions')} className="w-full justify-start h-12" variant="outline">
+              <Button onPress={() => handleQuickAction('view_available_missions')} className="w-full justify-start h-12" variant="outline">
                 <Trophy className="w-5 h-5 mr-3" />
                 <StyledText className="text-gray-700">View Available Missions</StyledText>
               </Button>
-              <Button onPress={() => console.log('Connect New Data Source')} className="w-full justify-start h-12" variant="outline">
+              <Button onPress={() => handleQuickAction('connect_new_data_source')} className="w-full justify-start h-12" variant="outline">
                 <User className="w-5 h-5 mr-3" />
                 <StyledText className="text-gray-700">Connect New Data Source</StyledText>
               </Button>

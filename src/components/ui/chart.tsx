@@ -2,7 +2,7 @@ import * as React from "react"
 import { View, Dimensions } from "react-native"
 import Svg, { Path, Circle, Rect, Text as SvgText, Line, G } from "react-native-svg"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const

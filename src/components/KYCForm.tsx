@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import DocumentPicker from 'react-native-document-picker';
 import { launchImageLibrary, launchCamera, ImagePickerResponse } from 'react-native-image-picker';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
 
 interface FileData {
   uri: string;

@@ -8,7 +8,7 @@ import Animated, {
   runOnJS
 } from "react-native-reanimated"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface SliderProps extends ViewProps {
   value?: number;

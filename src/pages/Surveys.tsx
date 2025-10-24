@@ -9,8 +9,8 @@ const StyledText = styled(Text);
 const StyledTouchableOpacity = styled(TouchableOpacity);
 
 // Assuming useAuth and supabase are already adapted for React Native
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
 
 // Interfaces (remain the same as they are type definitions)
 interface Survey {
@@ -359,7 +359,6 @@ export default function Surveys() {
                       <Award className="h-4 w-4" />
                       <StyledText>{survey.reward_points} points</StyledText>
                     </StyledView>
-                    <StyledText>${survey.reward_amount.toFixed(2)}</StyledText>
                   </StyledView>
                   <StyledView className="flex-row justify-between items-center">
                     {status === 'not_started' && (
@@ -418,7 +417,6 @@ export default function Surveys() {
                       <Award className="h-4 w-4" />
                       <StyledText>{task.reward_points} points</StyledText>
                     </StyledView>
-                    <StyledText>${task.reward_amount.toFixed(2)}</StyledText>
                   </StyledView>
                   <StyledView className="flex-row justify-between items-center">
                     {status === 'not_started' && (

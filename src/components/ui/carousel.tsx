@@ -2,8 +2,8 @@ import * as React from "react"
 import { View, ScrollView, TouchableOpacity, Dimensions } from "react-native"
 import { ArrowLeft, ArrowRight } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { cn } from "../../lib/utils"
+import { Button } from "../../components/ui/button"
 
 type CarouselApi = {
   scrollTo: (index: number) => void

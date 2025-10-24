@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from 'react-native'; // Import core Reac
 import { useEffect } from 'react';
 import { Home, AlertCircle } from "lucide-react-native"; // Assuming lucide-react-native is installed
 import { styled } from 'nativewind'; // For applying Tailwind classes
+import { IconWrapper } from '../components/ui/icon';
 
 // Styled components using Nativewind for reusability
 const StyledView = styled(View);
@@ -74,7 +75,9 @@ const NotFound = () => {
       <Card className="max-w-md w-full bg-white/10 rounded-lg p-6 shadow-lg"> {/* approximated glass-card */}
         <CardContent className="p-8 text-center space-y-6">
           <StyledView className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center"> {/* approximated gradient-to-br */}
-            <AlertCircle className="w-8 h-8 text-red-500" />
+            <IconWrapper className="w-8 h-8 text-red-500">
+              <AlertCircle size={32} color="#ef4444" />
+            </IconWrapper>
           </StyledView>
           
           <StyledView className="space-y-2">
@@ -87,7 +90,9 @@ const NotFound = () => {
           </StyledView>
 
           <Button onPress={handleGoHome} className="w-full">
-              <Home className="w-4 h-4 mr-2 text-white" />
+              <IconWrapper className="w-4 h-4 mr-2 text-white">
+                <Home size={16} color="#ffffff" />
+              </IconWrapper>
               <StyledText className="text-white">Go Back Home</StyledText>
           </Button>
         </CardContent>

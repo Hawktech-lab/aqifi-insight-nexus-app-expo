@@ -8,12 +8,12 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { useDeviceFingerprinting } from '@/contexts/DeviceFingerprintingContext';
-import { useDeviceAnalytics } from '@/hooks/useDeviceAnalytics';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { useDeviceFingerprinting } from '../contexts/DeviceFingerprintingContext';
+import { useDeviceAnalytics } from '../hooks/useDeviceAnalytics';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Separator } from '../components/ui/separator';
 import { 
   Smartphone, 
   Cpu, 
@@ -541,4 +541,6 @@ const styles = StyleSheet.create({
 });
 
 export default DeviceFingerprinting;
+
+
 

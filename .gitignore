@@ -9,6 +9,10 @@ yarn-error.log*
 dist/
 web-build/
 
+# Native folders (for Prebuild/CNG workflow)
+android/
+ios/
+
 # Native
 *.orig.*
 *.jks

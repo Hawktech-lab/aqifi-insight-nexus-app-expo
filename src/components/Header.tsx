@@ -17,7 +17,7 @@ import {
   Menu,
   X,
 } from 'lucide-react-native';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 

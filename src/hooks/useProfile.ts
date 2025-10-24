@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
+import type { Tables } from '../integrations/supabase/types';
 
 export function useProfile() {
   const { user } = useAuth();
@@ -61,5 +61,27 @@ export function useProfile() {
     };
   }, [user]);
 
-  return { profile, loading, refetch: fetchProfile };
+  const updateProfile = async (updates: Partial<Tables<'profiles'>>) => {
+    if (!user) {
+      throw new Error('No user logged in');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      setProfile(data);
+      return { data, error: null };
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      return { data: null, error };
+    }
+  };
+
+  return { profile, loading, refetch: fetchProfile, updateProfile };
 }

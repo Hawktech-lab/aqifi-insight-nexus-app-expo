@@ -1,0 +1,1284 @@
+/**
+ * Settings Page - Toggle Switch Fixes
+ * 
+ * ROOT CAUSE FIXED:
+ * The main issue was maintaining two separate state systems:
+ * 1. Local component state variables (locationEnabled, spatialEnabled, behavioralEnabled)
+ * 2. Data stream states from the database (dataStreams[].is_enabled)
+ * 
+ * These would get out of sync, causing the UI to show incorrect toggle states.
+ * 
+ * SOLUTION:
+ * - Removed all local toggle state variables
+ * - Made getToggleState() directly read from dataStreams[].is_enabled
+ * - This ensures the UI always reflects the actual database state
+ * - The useDataStreams hook already handles state updates automatically
+ * 
+ * Additional Improvements:
+ * - Added loading states for visual feedback during toggle operations
+ * - Enhanced error handling and debug logging
+ * - Simplified state management by using single source of truth
+ */
+
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, Switch, TextInput, ActivityIndicator, Image, Alert } from 'react-native';
+import {
+  User, Wallet, Shield, Bell, Smartphone, MapPin, Mail, Wifi, Heart, Navigation, Zap, Play, RefreshCw, CheckCircle, AlertCircle, Edit2, LogOut, KeyRound, Database, LocateIcon
+} from "lucide-react-native"; // Assuming lucide-react-native is installed
+import { styled } from 'nativewind';
+
+// Styled components using Nativewind for reusability
+const StyledView = styled(View);
+const StyledText = styled(Text);
+const StyledTouchableOpacity = styled(TouchableOpacity);
+const StyledTextInput = styled(TextInput);
+const StyledImage = styled(Image);
+
+// Assuming useProfile, useDataStreams, and useAuth are already adapted for React Native
+import { useProfile } from '../hooks/useProfile';
+import { useDataStreams } from '../hooks/useDataStreams';
+import { useAuth } from '../contexts/AuthContext';
+import { useDeviceFingerprinting } from '../contexts/DeviceFingerprintingContext';
+import { useGmailAuth } from '../hooks/useGmailAuth';
+import { useLocationData } from '../hooks/useLocationData';
+
+// Replicating simplified Card components
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+const Card = styled(({ children, className }: CardProps) => (
+  <StyledView className={`rounded-lg bg-white shadow-md ${className}`}>
+    {children}
+  </StyledView>
+));
+
+interface CardHeaderProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const CardHeader = styled(({ children, className }: CardHeaderProps) => (
+  <StyledView className={`p-4 pb-0 ${className}`}>
+    {children}
+  </StyledView>
+));
+
+interface CardTitleProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const CardTitle = styled(({ children, className }: CardTitleProps) => (
+  <StyledText className={`text-lg font-semibold ${className}`}>
+    {children}
+  </StyledText>
+));
+
+interface CardContentProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const CardContent = styled(({ children, className }: CardContentProps) => (
+  <StyledView className={`p-4 pt-3 ${className}`}>
+    {children}
+  </StyledView>
+));
+
+// Replicating simplified Button component
+interface ButtonProps {
+  children: React.ReactNode;
+  onPress: () => void;
+  disabled?: boolean;
+  variant?: 'outline' | 'default' | 'destructive'; // Added 'destructive'
+  size?: 'sm' | 'default' | 'lg' | 'icon'; // Added 'icon'
+  className?: string;
+}
+const Button = styled(({ children, onPress, disabled, variant = 'default', size = 'default', className }: ButtonProps) => {
+  let buttonClasses = `px-4 py-2 rounded-lg flex-row items-center justify-center `;
+  let textClasses = `text-white`;
+
+  if (variant === 'outline') {
+    buttonClasses += `border border-gray-300 bg-white`;
+    textClasses = `text-gray-700`;
+  } else if (variant === 'destructive') {
+    buttonClasses += `bg-red-500`;
+    textClasses = `text-white font-medium`;
+  } else { // default
+    buttonClasses += `bg-blue-500`;
+    textClasses = `text-white`;
+  }
+
+  if (size === 'sm') {
+    buttonClasses += ` h-8 px-3 text-sm`;
+  } else if (size === 'lg') {
+    buttonClasses += ` h-12 px-8 text-lg`;
+  } else if (size === 'icon') {
+    buttonClasses += ` h-10 w-10`; // Fixed width/height for icon
+  } else { // default
+    buttonClasses += ` h-10 px-4`;
+  }
+
+  if (disabled) {
+    buttonClasses += ` opacity-50`;
+  }
+
+  return (
+    <StyledTouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      className={`${buttonClasses} ${className}`}
+    >
+      {typeof children === 'string' ? (
+        <StyledText className={`${textClasses}`}>{children}</StyledText>
+      ) : (
+        <StyledView className="flex-row items-center">
+          {React.Children.map(children, (child, index) => {
+            if (typeof child === 'string') {
+              return <StyledText key={index} className={`${textClasses}`}>{child}</StyledText>;
+            }
+            return child;
+          })}
+        </StyledView>
+      )}
+    </StyledTouchableOpacity>
+  );
+});
+
+// Replicating simplified Input component
+interface InputProps {
+  id?: string;
+  placeholder?: string;
+  value?: string;
+  onChangeText?: (text: string) => void;
+  secureTextEntry?: boolean;
+  keyboardType?: TextInput['props']['keyboardType'];
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  className?: string;
+}
+const Input = styled(({ className, ...props }: InputProps) => (
+  <StyledTextInput
+    className={`border border-gray-300 rounded-md p-2 text-base ${className}`}
+    {...props}
+  />
+));
+
+// Replicating simplified Label component
+interface LabelProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const Label = styled(({ children, className }: LabelProps) => (
+  <StyledText className={`text-sm font-medium text-gray-700 mb-1 ${className}`}>
+    {children}
+  </StyledText>
+));
+
+// Replicating simplified Badge component
+interface BadgeProps {
+  children: React.ReactNode;
+  variant?: 'default' | 'outline' | 'secondary' | 'destructive';
+  className?: string;
+}
+const Badge = styled(({ children, variant = 'default', className }: BadgeProps) => {
+  let badgeClasses = `px-2.5 py-0.5 rounded-full text-xs font-semibold `;
+  let textClasses = `text-white`;
+
+  if (variant === 'outline') {
+    badgeClasses += `border border-gray-300 bg-white`;
+    textClasses = `text-gray-700`;
+  } else if (variant === 'secondary') {
+    badgeClasses += `bg-gray-200`;
+    textClasses = `text-gray-800`;
+  } else if (variant === 'destructive') {
+    badgeClasses += `bg-red-500`;
+    textClasses = `text-white`;
+  } else { // default
+    badgeClasses += `bg-gray-800`;
+    textClasses = `text-white`;
+  }
+
+  return (
+    <StyledView className={`${badgeClasses} ${className}`}>
+      {typeof children === 'string' ? (
+        <StyledText className={`${textClasses}`}>{children}</StyledText>
+      ) : (
+        children
+      )}
+    </StyledView>
+  );
+});
+
+
+// Replicating simplified Avatar component
+interface AvatarProps {
+  src?: string;
+  alt?: string;
+  fallback: string;
+  className?: string;
+}
+const Avatar = styled(({ src, alt, fallback, className }: AvatarProps) => (
+  <StyledView className={`w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center ${className}`}>
+    {src ? (
+      <StyledImage source={{ uri: src }} className="w-full h-full" alt={alt || 'avatar'} />
+    ) : (
+      <StyledText className="text-xl font-medium text-gray-600">{fallback}</StyledText>
+    )}
+  </StyledView>
+));
+
+interface AvatarFallbackProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const AvatarFallback = styled(({ children, className }: AvatarFallbackProps) => (
+  <StyledView className={`w-full h-full flex items-center justify-center bg-gray-300 ${className}`}>
+    <StyledText className="text-lg text-gray-600">{children}</StyledText>
+  </StyledView>
+));
+
+interface AvatarImageProps {
+  src?: string;
+  alt?: string;
+  className?: string;
+}
+const AvatarImage = styled(({ src, alt, className }: AvatarImageProps) => (
+  <StyledImage source={{ uri: src }} className={`w-full h-full ${className}`} alt={alt || 'avatar'} />
+));
+
+
+// Simplified Tabs implementation for React Native
+interface TabsProps {
+  defaultValue: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  children: React.ReactNode;
+}
+const Tabs = styled(({ defaultValue, value, onValueChange, children }: TabsProps) => {
+  const [internalActiveTab, setInternalActiveTab] = useState(defaultValue);
+  
+  // Use controlled state if value and onValueChange are provided, otherwise use internal state
+  const activeTab = value !== undefined ? value : internalActiveTab;
+  const setActiveTab = onValueChange || setInternalActiveTab;
+
+  // Filter children to get TabsList and TabsContent
+  const tabsList = (Array.isArray(children) ? children : [children]).find(
+    (child: any) => child && child.props && child.props.isTabsList
+  );
+  const tabsContent = (Array.isArray(children) ? children : [children]).filter(
+    (child: any) => child && child.props && child.props.isTabsContent
+  );
+
+  return (
+    <StyledView>
+      {tabsList && React.cloneElement(tabsList, { activeTab, setActiveTab })}
+      {tabsContent.map((child: any) =>
+        React.cloneElement(child, { key: child.props.value, activeTab })
+      )}
+    </StyledView>
+  );
+});
+
+interface TabsListProps {
+  children: React.ReactNode;
+  activeTab: string;
+  setActiveTab: (value: string) => void;
+  className?: string;
+  isTabsList?: boolean; // Marker for Tabs component
+}
+const TabsList = styled(({ children, activeTab, setActiveTab, className, isTabsList }: TabsListProps) => (
+  <StyledView className={`flex-row rounded-lg p-1 bg-gray-100 mb-6 border border-gray-200 ${className}`} style={{ minHeight: 50 }}>
+    {(Array.isArray(children) ? children : [children]).map((child: any) =>
+      React.cloneElement(child, {
+        key: child.props.value,
+        activeTab,
+        onPress: () => setActiveTab(child.props.value),
+      })
+    )}
+  </StyledView>
+), { isTabsList: true }); // Mark as TabsList
+
+interface TabsTriggerProps {
+  children: React.ReactNode;
+  value: string;
+  activeTab?: string; // Passed from TabsList
+  onPress?: () => void; // Passed from TabsList
+  className?: string;
+}
+const TabsTrigger = styled(({ children, value, activeTab, onPress, className }: TabsTriggerProps) => (
+  <StyledTouchableOpacity
+    className={`flex-1 items-center py-3 px-2 rounded-md ${activeTab === value ? 'bg-white shadow-sm' : 'bg-transparent'} ${className}`}
+    onPress={onPress}
+    style={{
+      minHeight: 44, // Ensure minimum touch target
+      borderWidth: activeTab === value ? 1 : 0,
+      borderColor: activeTab === value ? '#e5e7eb' : 'transparent',
+    }}
+  >
+    {typeof children === 'string' ? (
+      <StyledText className={`text-sm font-medium ${activeTab === value ? 'text-blue-600' : 'text-gray-600'}`}>
+        {children}
+      </StyledText>
+    ) : (
+      children
+    )}
+  </StyledTouchableOpacity>
+));
+
+interface TabsContentProps {
+  children: React.ReactNode;
+  value: string;
+  activeTab?: string; // Passed from Tabs
+  className?: string;
+  isTabsContent?: boolean; // Marker for Tabs component
+}
+const TabsContent = styled(({ children, value, activeTab, className, isTabsContent }: TabsContentProps) => (
+  activeTab === value ? <StyledView className={`${className}`}>{children}</StyledView> : null
+), { isTabsContent: true }); // Mark as TabsContent
+
+
+// Placeholder for KYCStatus and KYCAdminPanel components if they are not provided
+const KYCStatus = () => (
+  <Card className="glass-card mb-4">
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <Shield className="w-5 h-5" />
+        KYC Status
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="flex-row items-center justify-between">
+      <StyledView className="flex-row items-center gap-2">
+        <AlertCircle className="w-5 h-5 text-yellow-500" />
+        <StyledText className="text-sm font-medium text-yellow-500">
+          Verification Pending
+        </StyledText>
+      </StyledView>
+      <Button size="sm" onPress={() => console.log('Start KYC Process')}>
+        Start Verification
+      </Button>
+    </CardContent>
+  </Card>
+);
+
+const KYCAdminPanel = () => (
+  <Card className="glass-card">
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <Shield className="w-5 h-5" />
+        KYC Admin Panel (Placeholder)
+      </CardTitle>
+    </CardHeader>
+    <CardContent>
+      <StyledText className="text-muted-foreground text-sm">
+        This is a placeholder for the KYC Admin Panel functionality.
+      </StyledText>
+    </CardContent>
+  </Card>
+);
+
+
+const streamIcons = {
+  // steps: Heart, // COMMENTED OUT - Steps & Activity Tracking
+  // device_metadata: Smartphone, // COMMENTED OUT - Device Information
+  // email_metadata: Mail, // COMMENTED OUT - Gmail Data Access
+  // wifi: Wifi, // COMMENTED OUT - WiFi Network Sharing
+  spatial: Navigation,
+  location: MapPin,
+  behavioral: Zap,
+};
+
+const streamNames = {
+  // steps: "Steps & Activity Tracking", // COMMENTED OUT
+  // device_metadata: "Device Information", // COMMENTED OUT
+  // email_metadata: "Gmail Data Access", // COMMENTED OUT
+  // wifi: "WiFi Network Sharing", // COMMENTED OUT
+  spatial: "Spatial Movement Data",
+  location: "Location Data",
+  behavioral: "Behavioral Data",
+};
+
+export default function Settings() {
+  const { user, signOut } = useAuth();
+  const { profile, loading: profileLoading, refetch: refetchProfile } = useProfile();
+  const { dataStreams, loading: streamsLoading, toggleDataStream, setDataStreams, refreshDataStreams } = useDataStreams();
+  const { deviceFingerprint, isInitialized, trackEvent, refreshDeviceFingerprint } = useDeviceFingerprinting();
+  const gmailAuth = useGmailAuth(
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? '',
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID ?? ''
+  );
+  
+  // Get location stream from data streams
+  const locationStream = dataStreams.find(stream => stream.stream_type === 'location');
+  
+  const { 
+    isInitialized: locationInitialized, 
+    isTracking, 
+    currentLocation, 
+    locationHistory, 
+    config: locationConfig,
+    enableLocationStream,
+    disableLocationStream,
+    getCurrentLocation,
+    getLocationHistory,
+    updateLocationConfig,
+    requestLocationPermission,
+    isEnabled: locationHookEnabled,
+    dataCount: locationDataCount,
+    earningsRate: locationEarningsRate,
+    lastSync: locationLastSync
+  } = useLocationData(toggleDataStream);
+  
+  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [isRefreshingStreams, setIsRefreshingStreams] = useState(false);
+  const [currentTab, setCurrentTab] = useState('profile');
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [lastToggleAction, setLastToggleAction] = useState<string>('None');
+  const [toggleStatus, setToggleStatus] = useState<string>('Ready');
+  
+  // Note: We now use dataStreams state directly instead of separate local state variables
+  // This ensures the UI always reflects the actual database state
+  
+  // Loading states for each toggle
+  const [locationToggleLoading, setLocationToggleLoading] = useState<boolean>(false);
+  const [spatialToggleLoading, setSpatialToggleLoading] = useState<boolean>(false);
+  const [behavioralToggleLoading, setBehavioralToggleLoading] = useState<boolean>(false);
+
+  // Function to add debug logs
+  const addDebugLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+    setDebugLogs(prev => [...prev.slice(-9), logMessage]); // Keep last 10 logs
+    setLastToggleAction(message);
+  };
+
+  // Function to clear debug logs
+  const clearDebugLogs = () => {
+    setDebugLogs([]);
+    setLastToggleAction('None');
+  };
+
+  // Debug: Log tab changes
+  useEffect(() => {
+    console.log('Current tab changed to:', currentTab);
+  }, [currentTab]);
+
+  const handleTabChange = (value: string) => {
+    console.log('Tab change requested:', value);
+    setCurrentTab(value);
+  };
+
+  // State for profile form fields
+  const [firstName, setFirstName] = useState(profile?.first_name || '');
+  const [lastName, setLastName] = useState(profile?.last_name || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  useEffect(() => {
+    if (profile) {
+      setFirstName(profile.first_name || '');
+      setLastName(profile.last_name || '');
+    }
+  }, [profile]);
+
+  const handleProfileUpdate = async () => {
+    setIsSubmittingProfile(true);
+    await refetchProfile();
+    // In a real app, you might show a success message via a toast or alert
+    console.log('Profile updated successfully!');
+    setIsSubmittingProfile(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters long');
+      return;
+    }
+    setIsSubmittingPassword(true);
+    // This assumes a supabase.auth.updateUser method exists, if not,
+    // you'd need to implement password change logic in useAuth or similar.
+    // For now, it's a placeholder.
+    console.log('Attempting to change password...');
+    // await supabase.auth.updateUser({ password: newPassword });
+    console.log('Password change initiated (check Supabase for actual implementation).');
+    setNewPassword('');
+    setConfirmPassword('');
+    setIsSubmittingPassword(false);
+  };
+
+  // Simple toggle handlers following the sample pattern
+  const handleLocationToggle = async (value: boolean) => {
+    addDebugLog(`Location toggle requested: ${value}`);
+    setLocationToggleLoading(true);
+    try {
+      const locationStream = dataStreams.find(s => s.stream_type === 'location');
+      if (locationStream) {
+        addDebugLog(`Found location stream: ${locationStream.id}, current state: ${locationStream.is_enabled}`);
+        await toggleDataStream(locationStream.id, value);
+        addDebugLog(`Location stream toggled successfully to: ${value}`);
+        
+        if (value) {
+          const permissionGranted = await requestLocationPermission();
+          if (permissionGranted) {
+            addDebugLog('Location permission granted');
+            Alert.alert('Success', 'Location stream enabled and permission granted');
+          } else {
+            addDebugLog('Location permission denied');
+            Alert.alert('Permission Required', 'Location permission is required to enable location tracking');
+          }
+        }
+      } else {
+        addDebugLog('Location stream not found in dataStreams');
+        Alert.alert('Error', 'Location stream not found');
+      }
+    } catch (error) {
+      addDebugLog(`Location toggle error: ${error}`);
+      Alert.alert('Error', 'Failed to update location stream');
+    } finally {
+      setLocationToggleLoading(false);
+    }
+  };
+
+  // const handleStepsToggle = async () => { // COMMENTED OUT - Steps & Activity Tracking
+  //   const newState = !stepsToggleState;
+  //   setStepsToggleState(newState);
+  //   
+  //   try {
+  //     const stepsStream = dataStreams.find(s => s.stream_type === 'steps');
+  //     if (stepsStream) {
+  //       await toggleDataStream(stepsStream.id, newState);
+  //     }
+  //   } catch (error) {
+  //     setStepsToggleState(!newState);
+  //     Alert.alert('Error', 'Failed to update steps stream');
+  //   }
+  // };
+
+  // const handleWifiToggle = async () => { // COMMENTED OUT - WiFi Network Sharing
+  //   const newState = !wifiToggleState;
+  //   setWifiToggleState(newState);
+  //   
+  //   try {
+  //     const wifiStream = dataStreams.find(s => s.stream_type === 'wifi');
+  //     if (wifiStream) {
+  //       await toggleDataStream(wifiStream.id, newState);
+  //     }
+  //   } catch (error) {
+  //     setWifiToggleState(!newState);
+  //     Alert.alert('Error', 'Failed to update wifi stream');
+  //   }
+  // };
+
+  // const handleDeviceToggle = async () => { // COMMENTED OUT - Device Information
+  //   const newState = !deviceToggleState;
+  //   setDeviceToggleState(newState);
+  //   
+  //   try {
+  //     const deviceStream = dataStreams.find(s => s.stream_type === 'device_metadata');
+  //     if (deviceStream) {
+  //       await toggleDataStream(deviceStream.id, newState);
+  //     }
+  //   } catch (error) {
+  //     setDeviceToggleState(!newState);
+  //     Alert.alert('Error', 'Failed to update device stream');
+  //     }
+  //   }
+  // };
+
+  // const handleEmailToggle = async () => { // COMMENTED OUT - Gmail Data Access
+  //   const newState = !emailToggleState;
+  //   setEmailToggleState(newState);
+  //   
+  //   try {
+  //     const emailStream = dataStreams.find(s => s.stream_type === 'email_metadata');
+  //     if (emailStream) {
+  //       await toggleDataStream(emailStream.id, newState);
+  //     }
+  //   } catch (error) {
+  //     setEmailToggleState(!newState);
+  //     Alert.alert('Error', 'Failed to update email stream');
+  //   }
+  // };
+
+  const handleSpatialToggle = async (value: boolean) => {
+    addDebugLog(`Spatial toggle requested: ${value}`);
+    setSpatialToggleLoading(true);
+    try {
+      const spatialStream = dataStreams.find(s => s.stream_type === 'spatial');
+      if (spatialStream) {
+        addDebugLog(`Found spatial stream: ${spatialStream.id}, current state: ${spatialStream.is_enabled}`);
+        await toggleDataStream(spatialStream.id, value);
+        addDebugLog(`Spatial stream toggled successfully to: ${value}`);
+      } else {
+        addDebugLog('Spatial stream not found in dataStreams');
+        Alert.alert('Error', 'Spatial stream not found');
+      }
+    } catch (error) {
+      addDebugLog(`Spatial toggle error: ${error}`);
+      Alert.alert('Error', 'Failed to update spatial stream');
+    } finally {
+      setSpatialToggleLoading(false);
+    }
+  };
+
+  const handleBehavioralToggle = async (value: boolean) => {
+    addDebugLog(`Behavioral toggle requested: ${value}`);
+    setBehavioralToggleLoading(true);
+    try {
+      const behavioralStream = dataStreams.find(s => s.stream_type === 'behavioral');
+      if (behavioralStream) {
+        addDebugLog(`Found behavioral stream: ${behavioralStream.id}, current state: ${behavioralStream.is_enabled}`);
+        await toggleDataStream(behavioralStream.id, value);
+        addDebugLog(`Behavioral stream toggled successfully to: ${value}`);
+      } else {
+        addDebugLog('Behavioral stream not found in dataStreams');
+        Alert.alert('Error', 'Behavioral stream not found');
+      }
+    } catch (error) {
+      addDebugLog(`Behavioral toggle error: ${error}`);
+      Alert.alert('Error', 'Failed to update behavioral stream');
+    } finally {
+      setBehavioralToggleLoading(false);
+    }
+  };
+
+  // Helper function to get toggle state by stream type - use actual data stream state
+  const getToggleState = (streamType: string): boolean => {
+    const stream = dataStreams.find(s => s.stream_type === streamType);
+    return stream ? stream.is_enabled : false;
+  };
+
+  // Helper function to get loading state by stream type
+  const getToggleLoadingState = (streamType: string): boolean => {
+    switch (streamType) {
+      case 'location': return locationToggleLoading;
+      case 'spatial': return spatialToggleLoading;
+      case 'behavioral': return behavioralToggleLoading;
+      default: return false;
+    }
+  };
+
+  // Helper function to handle toggle by stream type
+  const handleStreamToggleByType = (streamType: string, value: boolean) => {
+    addDebugLog(`Stream toggle by type: ${streamType} -> ${value}`);
+    switch (streamType) {
+      case 'location': 
+        handleLocationToggle(value); 
+        break;
+      case 'spatial': 
+        handleSpatialToggle(value); 
+        break;
+      case 'behavioral': 
+        handleBehavioralToggle(value); 
+        break;
+      default:
+        addDebugLog(`Unknown stream type: ${streamType}`);
+        Alert.alert('Error', `Unknown stream type: ${streamType}`);
+    }
+  };
+
+  const handleRefreshStreams = async () => {
+    setIsRefreshingStreams(true);
+    addDebugLog('Refreshing data streams...');
+    try {
+      // Refresh data streams
+      await refreshDataStreams();
+      // Also refresh profile data
+      await refetchProfile();
+      addDebugLog('Data streams refreshed successfully');
+    } catch (error) {
+      addDebugLog(`Error refreshing streams: ${error}`);
+      Alert.alert('Error', 'Failed to refresh data streams');
+    } finally {
+      setIsRefreshingStreams(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    // In a real React Native app, you would navigate to the Auth screen
+    console.log('User signed out.');
+  };
+
+  // Track settings view event
+  // useEffect(() => { // COMMENTED OUT - Device Fingerprinting Tracking
+  //   if (isInitialized) {
+  //     trackEvent('settings_viewed', {
+  //       user_id: user?.id,
+  //       device_fingerprint_id: deviceFingerprint?.device_id,
+  //     });
+  //   }
+  // }, [isInitialized, user, deviceFingerprint, trackEvent]);
+
+  // Debug data streams loading - simplified since we now use dataStreams directly
+  useEffect(() => {
+    if (dataStreams.length > 0) {
+      addDebugLog(`Data streams loaded: ${dataStreams.length} streams`);
+      dataStreams.forEach(stream => {
+        addDebugLog(`${stream.stream_type}: ${stream.is_enabled ? 'Enabled' : 'Disabled'}`);
+      });
+    }
+  }, [dataStreams]);
+
+
+
+
+
+  if (profileLoading || streamsLoading) {
+    return (
+      <StyledView className="flex-1 justify-center items-center bg-gray-100">
+        <ActivityIndicator size="large" color="#0000ff" />
+        <StyledText className="text-xl font-bold mt-4">Loading settings...</StyledText>
+      </StyledView>
+    );
+  }
+
+  const getInitials = (firstName: string | null | undefined, lastName: string | null | undefined) => {
+    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
+  };
+
+  const getStreamDisplayName = (type: string) => {
+    return streamNames[type as keyof typeof streamNames] || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getStreamIcon = (type: string) => {
+    return streamIcons[type as keyof typeof streamIcons] || Play;
+  };
+
+  return (
+    <StyledView className="flex-1 p-6 bg-gray-100 space-y-6">
+      <StyledView>
+        <StyledText className="text-2xl font-bold text-gray-900 mb-2">Settings</StyledText>
+        <StyledText className="text-sm text-gray-500">
+          Manage your account and preferences.
+        </StyledText>
+      </StyledView>
+
+      <Tabs defaultValue="profile" value={currentTab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="profile">
+            <User className="w-4 h-4 mr-2" />
+            Profile
+          </TabsTrigger>
+          <TabsTrigger value="data-streams">
+            <Wallet className="w-4 h-4 mr-2" />
+            Data Streams
+          </TabsTrigger>
+          <TabsTrigger value="security">
+            <Shield className="w-4 h-4 mr-2" />
+            Security & Privacy
+          </TabsTrigger>
+          <TabsTrigger value="notifications">
+            <Bell className="w-4 h-4 mr-2" />
+            Notifications
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="profile">
+          <Card className="glass-card mb-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="w-5 h-5" />
+                Personal Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StyledView className="flex-row items-center space-x-4">
+                <Avatar fallback={getInitials(profile?.first_name, profile?.last_name)}>
+                  {/* AvatarImage should be passed as a prop if needed */}
+                </Avatar>
+                <StyledView className="flex-1">
+                  <StyledText className="text-lg font-semibold">{profile?.first_name} {profile?.last_name}</StyledText>
+                  <StyledText className="text-sm text-muted-foreground">{user?.email}</StyledText>
+                </StyledView>
+                <Button size="sm" onPress={() => console.log('Upload avatar - not implemented')}>
+                  <Edit2 className="w-4 h-4" />
+                </Button>
+              </StyledView>
+
+              <StyledView className="space-y-4">
+                <StyledView className="flex-row gap-4">
+                  <StyledView className="flex-1 space-y-2">
+                    <Label>First Name</Label>
+                    <Input
+                      placeholder="John"
+                      value={firstName}
+                      onChangeText={setFirstName}
+                    />
+                  </StyledView>
+                  <StyledView className="flex-1 space-y-2">
+                    <Label>Last Name</Label>
+                    <Input
+                      placeholder="Doe"
+                      value={lastName}
+                      onChangeText={setLastName}
+                    />
+                  </StyledView>
+                </StyledView>
+                <Button onPress={handleProfileUpdate} disabled={isSubmittingProfile}>
+                  {isSubmittingProfile ? <ActivityIndicator color="#fff" /> : 'Save Changes'}
+                </Button>
+              </StyledView>
+            </CardContent>
+          </Card>
+
+          <KYCStatus />
+        </TabsContent>
+
+        <TabsContent value="data-streams">
+          <StyledView className="flex-row items-center justify-between mb-4">
+            <StyledText className="text-lg font-semibold">
+              Manage Data Streams
+            </StyledText>
+            <Button size="sm" variant="outline" onPress={handleRefreshStreams} disabled={isRefreshingStreams}>
+              {isRefreshingStreams ? <ActivityIndicator size="small" color="#000" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+              Refresh
+            </Button>
+          </StyledView>
+
+          {/* Debug section */}
+          <StyledView className="mb-4 p-3 bg-yellow-100 rounded-lg">
+            <StyledText className="text-sm font-medium mb-2">Debug Info:</StyledText>
+            <StyledText className="text-xs">Data Streams Count: {dataStreams.length}</StyledText>
+            <StyledText className="text-xs">Loading: {streamsLoading ? 'Yes' : 'No'}</StyledText>
+            <StyledText className="text-xs">Location Stream: {dataStreams.find(s => s.stream_type === 'location') ? 'Found' : 'Not Found'}</StyledText>
+            
+            {/* Stream Status */}
+            <StyledView className="mt-2 p-2 bg-white rounded border">
+              <StyledText className="text-xs font-medium mb-1">Stream Status:</StyledText>
+              {dataStreams.map((stream) => (
+                <StyledText key={stream.id} className="text-xs text-gray-600">
+                  {stream.stream_type}: {stream.is_enabled ? 'Enabled' : 'Disabled'} | Loading: {getToggleLoadingState(stream.stream_type) ? 'Yes' : 'No'}
+                </StyledText>
+              ))}
+            </StyledView>
+            
+            {/* Visual Debug Logs */}
+            <StyledView className="mt-2 p-2 bg-white rounded border">
+              <StyledText className="text-xs font-medium mb-1">Debug Logs:</StyledText>
+              {debugLogs.map((log, index) => (
+                <StyledText key={index} className="text-xs text-gray-600">{log}</StyledText>
+              ))}
+              {debugLogs.length === 0 && (
+                <StyledText className="text-xs text-gray-400">No logs yet...</StyledText>
+              )}
+            </StyledView>
+            
+            <StyledView className="flex-row space-x-2 mt-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onPress={() => {
+                  const locationStream = dataStreams.find(s => s.stream_type === 'location');
+                  if (locationStream) {
+                    const currentState = getToggleState('location');
+                    addDebugLog(`Manual toggle test for location stream: ${locationStream.id}, current state: ${currentState}`);
+                    handleLocationToggle(!currentState);
+                  } else {
+                    addDebugLog('No location stream found in dataStreams');
+                  }
+                }}
+              >
+                Test Location Toggle
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onPress={clearDebugLogs}
+              >
+                Clear Logs
+              </Button>
+            </StyledView>
+          </StyledView>
+
+          <StyledView className="space-y-4">
+            {dataStreams
+              .filter(
+                (s) =>
+                  // s.stream_type !== 'device_metadata' && // COMMENTED OUT - Device Information
+                  // s.stream_type !== 'wifi' && // COMMENTED OUT - WiFi Network Sharing
+                  // s.stream_type !== 'steps' && // COMMENTED OUT - Steps & Activity Tracking
+                  // s.stream_type !== 'email_metadata' // COMMENTED OUT - Gmail Data Access
+                  true // Show all streams since we're commenting out the filtering
+              )
+              .map((stream) => {
+              
+              const streamName = getStreamDisplayName(stream.stream_type);
+              const Icon = getStreamIcon(stream.stream_type);
+              const isLocationStream = stream.stream_type === 'location';
+              
+              return (
+                <Card key={stream.id} className="glass-card">
+                  <CardContent className="space-y-4">
+                    <StyledView className="flex-row items-center justify-between">
+                      <StyledView className="flex-row items-center space-x-3">
+                        <Icon className="w-6 h-6 text-gray-700" />
+                        <StyledView>
+                          <StyledText className="font-medium">{streamName}</StyledText>
+                          <Badge variant={getToggleState(stream.stream_type) ? 'default' : 'secondary'} className="mt-1">
+                            {getToggleState(stream.stream_type) ? 'Enabled' : 'Disabled'}
+                          </Badge>
+                        </StyledView>
+                      </StyledView>
+                      <StyledView className="flex-row items-center space-x-2">
+                        {getToggleLoadingState(stream.stream_type) ? (
+                          <ActivityIndicator size="small" color="#007AFF" />
+                        ) : (
+                          <Switch
+                            value={getToggleState(stream.stream_type)}
+                            onValueChange={(value) => {
+                              handleStreamToggleByType(stream.stream_type, value);
+                            }}
+                            trackColor={{ false: '#767577', true: '#81b0ff' }}
+                            thumbColor={getToggleState(stream.stream_type) ? '#f5dd4b' : '#f4f3f4'}
+                            ios_backgroundColor="#3e3e3e"
+                            disabled={getToggleLoadingState(stream.stream_type)}
+                          />
+                        )}
+                        {/* {stream.stream_type === 'email_metadata' && ( // COMMENTED OUT - Gmail Data Access
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onPress={async () => {
+                              const result = await gmailAuth.authorize();
+                              if ((result as any).error) {
+                                Alert.alert('Gmail', 'Authorization failed');
+                              } else if ((result as any).cancelled) {
+                                // no-op
+                              } else {
+                                Alert.alert('Gmail', 'Connected');
+                              }
+                            }}
+                          >
+                            Connect Gmail
+                          </Button>
+                        )} */}
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onPress={() => {
+                            const currentState = getToggleState(stream.stream_type);
+                            handleStreamToggleByType(stream.stream_type, !currentState);
+                          }}
+                          disabled={getToggleLoadingState(stream.stream_type)}
+                        >
+                          Test
+                        </Button>
+                      </StyledView>
+                    </StyledView>
+
+                    {/* Enhanced details for location stream */}
+                    {isLocationStream && (
+                      <StyledView className="bg-blue-50 p-3 rounded-lg space-y-3">
+                        <StyledView className="flex-row items-center justify-between">
+                          <StyledText className="text-sm font-medium text-blue-700">Location Data Status</StyledText>
+                          <StyledView className="flex-row items-center space-x-2">
+                            {locationInitialized ? (
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <AlertCircle className="w-4 h-4 text-yellow-500" />
+                            )}
+                            <StyledText className="text-xs text-blue-600">
+                              {locationInitialized ? 'Ready' : 'Permission Required'}
+                            </StyledText>
+                          </StyledView>
+                        </StyledView>
+
+                        <StyledView className="grid grid-cols-2 gap-2">
+                          <StyledView>
+                            <StyledText className="text-xs text-blue-600">Data Points</StyledText>
+                            <StyledText className="text-sm font-medium">{locationDataCount}</StyledText>
+                          </StyledView>
+                          <StyledView>
+                            <StyledText className="text-xs text-blue-600">Earnings Rate</StyledText>
+                            <StyledText className="text-sm font-medium">${locationEarningsRate.toFixed(3)}/point</StyledText>
+                          </StyledView>
+                          <StyledView>
+                            <StyledText className="text-xs text-blue-600">Tracking</StyledText>
+                            <StyledText className="text-sm font-medium">
+                              {isTracking ? 'Active' : 'Inactive'}
+                            </StyledText>
+                          </StyledView>
+                          <StyledView>
+                            <StyledText className="text-xs text-blue-600">Last Sync</StyledText>
+                            <StyledText className="text-sm font-medium">
+                              {locationLastSync ? new Date(locationLastSync).toLocaleDateString() : 'Never'}
+                            </StyledText>
+                          </StyledView>
+                        </StyledView>
+
+                        {/* Current location display */}
+                        {currentLocation && (
+                          <StyledView className="bg-white p-2 rounded border border-blue-200">
+                            <StyledText className="text-xs font-medium text-blue-700 mb-1">Current Location</StyledText>
+                            <StyledText className="text-xs text-blue-600">
+                              {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+                            </StyledText>
+                            {currentLocation.city && (
+                              <StyledText className="text-xs text-blue-600">
+                                {currentLocation.city}, {currentLocation.state}
+                              </StyledText>
+                            )}
+                          </StyledView>
+                        )}
+
+                        {/* Location controls */}
+                        <StyledView className="flex-row space-x-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onPress={async () => {
+                              const location = await getCurrentLocation();
+                              if (location) {
+                                console.log('Current location:', location);
+                              }
+                            }}
+                            disabled={!locationInitialized}
+                          >
+                            <LocateIcon className="w-4 h-4 mr-1" />
+                            Get Location
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onPress={async () => {
+                              const history = await getLocationHistory(10);
+                              console.log('Location history:', history);
+                            }}
+                            disabled={!locationInitialized}
+                          >
+                            <MapPin className="w-4 h-4 mr-1" />
+                            View History
+                          </Button>
+                        </StyledView>
+                      </StyledView>
+                    )}
+
+                    {/* Basic stream info for other streams */}
+                    {!isLocationStream && (
+                      <StyledView className="bg-gray-50 p-3 rounded-lg">
+                        <StyledView className="grid grid-cols-2 gap-2">
+                          <StyledView>
+                            <StyledText className="text-xs text-gray-600">Data Points</StyledText>
+                            <StyledText className="text-sm font-medium">{stream.data_count || 0}</StyledText>
+                          </StyledView>
+                          <StyledView>
+                            <StyledText className="text-xs text-gray-600">Earnings Rate</StyledText>
+                            <StyledText className="text-sm font-medium">1 pt/data</StyledText>
+                          </StyledView>
+                        </StyledView>
+                      </StyledView>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </StyledView>
+        </TabsContent>
+
+        <TabsContent value="security">
+          <Card className="glass-card mb-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5" />
+                Change Password
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StyledView className="space-y-2">
+                <Label>New Password</Label>
+                <Input
+                  placeholder="Enter new password"
+                  secureTextEntry
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+              </StyledView>
+              <StyledView className="space-y-2">
+                <Label>Confirm New Password</Label>
+                <Input
+                  placeholder="Confirm new password"
+                  secureTextEntry
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                />
+              </StyledView>
+              {passwordError && (
+                <StyledText className="text-red-500 text-sm">{passwordError}</StyledText>
+              )}
+              <Button onPress={handleChangePassword} disabled={isSubmittingPassword}>
+                {isSubmittingPassword ? <ActivityIndicator color="#fff" /> : 'Update Password'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Device Fingerprinting Status - Informational Only - COMMENTED OUT */}
+          {/* <Card className="glass-card mb-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Device Data Collection
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StyledView className="flex-row items-center justify-between">
+                <StyledView className="flex-1">
+                  <StyledText className="text-sm font-medium text-gray-700">Status</StyledText>
+                  <StyledText className="text-xs text-gray-500 mt-1">
+                    Device fingerprinting is {isInitialized ? 'active' : 'initializing'} for analytics and security purposes
+                  </StyledText>
+                </StyledView>
+                <StyledView className="flex-row items-center">
+                  {isInitialized ? (
+                    <>
+                      <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                      <StyledText className="text-sm text-green-600 font-medium">Active</StyledText>
+                    </>
+                  ) : (
+                    <>
+                      <ActivityIndicator size="small" color="#007AFF" />
+                      <StyledText className="text-sm text-blue-600 font-medium ml-2">Initializing</StyledText>
+                    </>
+                  )}
+                </StyledView>
+              </StyledView>
+              
+              {/* Show basic device info if available */}
+              {deviceFingerprint && (
+                <StyledView className="bg-gray-50 p-3 rounded-lg">
+                  <StyledText className="text-xs font-medium text-gray-700 mb-2">Device Information:</StyledText>
+                  <StyledView className="space-y-1">
+                    <StyledText className="text-xs text-gray-600">
+                      Device: {deviceFingerprint.device_brand} {deviceFingerprint.device_model}
+                    </StyledText>
+                    <StyledText className="text-xs text-gray-600">
+                      OS: {deviceFingerprint.os_type} {deviceFingerprint.os_version}
+                    </StyledText>
+                    <StyledText className="text-xs text-gray-600">
+                      App Version: {deviceFingerprint.app_version}
+                    </StyledText>
+                    <StyledText className="text-xs text-gray-600">
+                      Screen: {deviceFingerprint.screen_width}×{deviceFingerprint.screen_height}
+                    </StyledText>
+                    <StyledText className="text-xs text-gray-600">
+                      Device ID: {deviceFingerprint.device_id.substring(0, 20)}...
+                    </StyledText>
+                  </StyledView>
+                </StyledView>
+              )}
+              
+              {/* Debug/Refresh Section */}
+              <StyledView className="flex-row items-center justify-between">
+                <StyledView>
+                  <StyledText className="text-sm font-medium text-gray-700">Last Updated</StyledText>
+                  <StyledText className="text-xs text-gray-500 mt-1">
+                    {deviceFingerprint ? new Date(deviceFingerprint.app_installation_date).toLocaleString() : 'Never'}
+                  </StyledText>
+                </StyledView>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onPress={async () => {
+                    try {
+                      await refreshDeviceFingerprint();
+                      if (trackEvent) {
+                        trackEvent('device_fingerprint_manually_refreshed');
+                      }
+                    } catch (error) {
+                      console.error('Failed to refresh device fingerprint:', error);
+                    }
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                  Refresh
+                </Button>
+              </StyledView>
+              
+              <StyledView className="bg-blue-50 p-3 rounded-lg">
+                <StyledText className="text-xs text-blue-700">
+                  Device fingerprinting helps us provide personalized services and improve app security. 
+                  This feature is enabled by default when you agree to our Terms of Service and Privacy Policy.
+                </StyledText>
+              </StyledView>
+            </CardContent>
+          </Card> */}
+
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LogOut className="w-5 h-5" />
+                Account Actions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StyledView className="flex-row items-center justify-between">
+                <StyledView>
+                  <StyledText className="text-sm font-medium text-gray-700">Sign Out</StyledText>
+                  <StyledText className="text-xs text-gray-500 mt-1">
+                    Sign out of your account
+                  </StyledText>
+                </StyledView>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onPress={handleSignOut}
+                  className="flex-row items-center"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  <StyledText className="text-white font-medium">Sign Out</StyledText>
+                </Button>
+              </StyledView>
+              {/* For Delete Account, would need a confirmation dialog and backend logic */}
+              <StyledView className="flex-row items-center justify-between">
+                <StyledView>
+                  <StyledText className="font-medium">Delete Account</StyledText>
+                  <StyledText className="text-sm text-muted-foreground">Permanently delete your account and data</StyledText>
+                </StyledView>
+                <Button variant="destructive" onPress={() => console.log('Delete account - confirmation needed')}>
+                  Delete
+                </Button>
+              </StyledView>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="w-5 h-5" />
+                Notifications
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <StyledView className="space-y-3">
+                <StyledView className="flex-row items-center justify-between">
+                  <StyledView>
+                    <StyledText className="font-medium">New Survey Alerts</StyledText>
+                    <StyledText className="text-sm text-muted-foreground">Get notified about new earning opportunities</StyledText>
+                  </StyledView>
+                  {/* This would be a Switch in RN */}
+                  <Switch value={true} onValueChange={(value) => console.log('Toggle New Survey Alerts', value)} />
+                </StyledView>
+
+                <StyledView className="flex-row items-center justify-between">
+                  <StyledView>
+                    <StyledText className="font-medium">Earnings Updates</StyledText>
+                    <StyledText className="text-sm text-muted-foreground">Weekly summary of your earnings</StyledText>
+                  </StyledView>
+                  {/* This would be a Switch in RN */}
+                  <Switch value={true} onValueChange={(value) => console.log('Toggle Earnings Updates', value)} />
+                </StyledView>
+              </StyledView>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </StyledView>
+  );
+}

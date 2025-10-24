@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { Header } from "./Header";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "../components/ui/sidebar";
 
 export function Layout() {
   return (

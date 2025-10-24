@@ -4,7 +4,7 @@ import { styled } from "nativewind"; // Assuming Nativewind is set up
 
 // You might not need 'cn' for this simple component unless you want to combine
 // more complex styles, but keeping for consistency with other conversions.
-import { cn } from "@/lib/utils"; // Adjust path as needed
+import { cn } from "../../lib/utils"; // Adjust path as needed
 
 // Define the styled View component
 const StyledView = styled(View);

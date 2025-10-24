@@ -13,7 +13,7 @@ import {
   Settings,
   Shield,
 } from 'lucide-react-native';
-import { useAdminCheck } from '@/hooks/useAdminCheck';
+import { useAdminCheck } from '../hooks/useAdminCheck';
 
 interface NavigationItem {
   title: string;

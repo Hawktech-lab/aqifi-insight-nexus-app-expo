@@ -50,6 +50,148 @@ export type Database = {
         }
         Relationships: []
       }
+      data_stream_configs: {
+        Row: {
+          id: string
+          stream_type: string
+          config_key: string
+          config_value: string
+          default_value: string
+          min_value: string | null
+          max_value: string | null
+          unit: string | null
+          description: string | null
+          is_editable: boolean
+          is_active: boolean
+          created_at: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          stream_type: string
+          config_key: string
+          config_value: string
+          default_value: string
+          min_value?: string | null
+          max_value?: string | null
+          unit?: string | null
+          description?: string | null
+          is_editable?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          stream_type?: string
+          config_key?: string
+          config_value?: string
+          default_value?: string
+          min_value?: string | null
+          max_value?: string | null
+          unit?: string | null
+          description?: string | null
+          is_editable?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_stream_configs_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      config_change_history: {
+        Row: {
+          id: string
+          config_id: string
+          old_value: string | null
+          new_value: string | null
+          changed_by: string | null
+          change_reason: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          config_id: string
+          old_value?: string | null
+          new_value?: string | null
+          changed_by?: string | null
+          change_reason?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          config_id?: string
+          old_value?: string | null
+          new_value?: string | null
+          changed_by?: string | null
+          change_reason?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "config_change_history_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "data_stream_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "config_change_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      user_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          session_token: string
+          created_at: string
+          expires_at: string
+          config_version: string | null
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_token: string
+          created_at?: string
+          expires_at: string
+          config_version?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          session_token?: string
+          created_at?: string
+          expires_at?: string
+          config_version?: string | null
+          is_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       earnings_transactions: {
         Row: {
           amount: number

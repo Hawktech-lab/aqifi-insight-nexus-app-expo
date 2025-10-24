@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "lib": ["dom", "esnext"],
+    "lib": [
+      "dom",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -17,21 +20,53 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@/components/*": ["./src/components/*"],
-      "@/lib/*": ["./src/lib/*"],
-      "@/utils/*": ["./src/utils/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@/components/*": [
+        "./src/components/*"
+      ],
+      "@/lib/*": [
+        "./src/lib/*"
+      ],
+      "@/utils/*": [
+        "./src/utils/*"
+      ],
+      "@/hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@/pages/*": [
+        "./src/pages/*"
+      ],
+      "@/services/*": [
+        "./src/services/*"
+      ],
+      "@/contexts/*": [
+        "./src/contexts/*"
+      ],
+      "@/types/*": [
+        "./src/types/*"
+      ],
+      "@/assets/*": [
+        "./src/assets/*"
+      ],
+      "@/integrations/*": [
+        "./src/integrations/*"
+      ]
     }
   },
   "include": [
     "src/**/*",
     "types/**/*",
+    "expo/**/*",
     "App.{js,jsx,ts,tsx}",
-    "index.{js,jsx,ts,tsx}"
+    "index.{js,jsx,ts,tsx}",
+    "nativewind-env.d.ts"
   ],
   "exclude": [
     "node_modules",
     "android",
     "ios"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

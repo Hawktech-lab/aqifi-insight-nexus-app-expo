@@ -3,7 +3,7 @@ import { View, Modal, TouchableOpacity, Text, PanGestureHandler, PanGestureHandl
 import { useSharedValue, useAnimatedGestureHandler, useAnimatedStyle, runOnJS, withSpring } from "react-native-reanimated"
 import Animated, { useAnimatedStyle as useAnimatedStyleReanimated } from "react-native-reanimated"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface DrawerProps {
   open?: boolean;

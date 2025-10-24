@@ -6,17 +6,17 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
-import { useDeviceFingerprinting } from '@/contexts/DeviceFingerprintingContext';
-import { useDeviceAnalytics } from '@/hooks/useDeviceAnalytics';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
+import { Separator } from '../components/ui/separator';
+import { useDeviceFingerprinting } from '../contexts/DeviceFingerprintingContext';
+import { useDeviceAnalytics } from '../hooks/useDeviceAnalytics';
 import { 
   Shield, 
   Smartphone, 
   Database, 
-  DollarSign, 
+  Star, 
   Eye,
   CheckCircle,
   AlertCircle,
@@ -136,8 +136,8 @@ const DeviceFingerprintingConsent: React.FC<DeviceFingerprintingConsentProps> = 
       <Card className="mb-4">
         <CardHeader>
           <CardTitle className="flex-row items-center">
-            <DollarSign size={20} className="mr-2" />
-            Monetization Benefits
+            <Star size={20} className="mr-2" />
+            Points Benefits
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -401,4 +401,6 @@ const styles = StyleSheet.create({
 });
 
 export default DeviceFingerprintingConsent;
+
+
 

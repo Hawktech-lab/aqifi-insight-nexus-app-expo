@@ -2,7 +2,7 @@ import * as React from "react"
 import { View, TouchableOpacity, Text } from "react-native"
 import { ChevronDown } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface CollapsibleProps {
   open?: boolean;

@@ -5,7 +5,7 @@ import { styled } from "nativewind";
 
 // Assume cn utility is available, similar to how it's used in web projects
 // You might need to adjust the path based on your project structure.
-import { cn } from "@/lib/utils"; // Path might need adjustment to e.g., ../lib/utils
+import { cn } from "../../lib/utils"; // Path might need adjustment to e.g., ../lib/utils
 
 const alertVariants = cva(
   "flex w-full rounded-lg border p-4", // 'relative' and specific SVG selectors removed

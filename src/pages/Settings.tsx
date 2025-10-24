@@ -1,657 +1,871 @@
-import { View, Text, TouchableOpacity, Switch, TextInput, ActivityIndicator, Image } from 'react-native';
-import { useEffect, useState } from 'react';
-import {
-  User, Wallet, Shield, Bell, Smartphone, MapPin, Mail, Wifi, Heart, Navigation, Zap, Play, RefreshCw, CheckCircle, AlertCircle, Edit2, LogOut, KeyRound
-} from "lucide-react-native"; // Assuming lucide-react-native is installed
-import { styled } from 'nativewind';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, Switch, TextInput, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { 
+  User, 
+  Wallet, 
+  Shield, 
+  Bell, 
+  MapPin, 
+  Navigation, 
+  Zap, 
+  RefreshCw, 
+  LogOut,
+  Mail
+} from "lucide-react-native";
 
-// Styled components using Nativewind for reusability
-const StyledView = styled(View);
-const StyledText = styled(Text);
-const StyledTouchableOpacity = styled(TouchableOpacity);
-const StyledTextInput = styled(TextInput);
-const StyledImage = styled(Image);
+// Import actual hooks for database integration
+import { useProfile } from '../hooks/useProfile';
+import { useDataStreams } from '../hooks/useDataStreams';
+import { useAuth } from '../contexts/AuthContext';
+import { useEmailMetadata } from '../hooks/useEmailMetadata';
 
-// Replicating simplified Card components
-interface CardProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const Card = styled(({ children, className }: CardProps) => (
-  <StyledView className={`rounded-lg bg-white shadow-md ${className}`}>
-    {children}
-  </StyledView>
-));
-
-interface CardHeaderProps {
-  children: React.ReactNode;
-  className?: string;
-}
-const CardHeader = styled(({ children, className }: CardHeaderProps) => (
-  <StyledView className={`p-4 pb-0 ${className}`}>
-    {children}
-  </StyledView>
-));
-
-interface CardTitleProps {
-  children: React.ReactNode;
-  className?: string;
-}
-const CardTitle = styled(({ children, className }: CardTitleProps) => (
-  <StyledText className={`text-lg font-semibold ${className}`}>
-    {children}
-  </StyledText>
-));
-
-interface CardContentProps {
-  children: React.ReactNode;
-  className?: string;
-}
-const CardContent = styled(({ children, className }: CardContentProps) => (
-  <StyledView className={`p-4 pt-3 ${className}`}>
-    {children}
-  </StyledView>
-));
-
-// Replicating simplified Button component
-interface ButtonProps {
-  children: React.ReactNode;
-  onPress: () => void;
-  disabled?: boolean;
-  variant?: 'outline' | 'default' | 'destructive'; // Added 'destructive'
-  size?: 'sm' | 'default' | 'lg' | 'icon'; // Added 'icon'
-  className?: string;
-}
-const Button = styled(({ children, onPress, disabled, variant = 'default', size = 'default', className }: ButtonProps) => {
-  let buttonClasses = `px-4 py-2 rounded-lg flex-row items-center justify-center `;
-  let textClasses = `text-white`;
-
-  if (variant === 'outline') {
-    buttonClasses += `border border-gray-300 bg-white`;
-    textClasses = `text-gray-700`;
-  } else if (variant === 'destructive') {
-    buttonClasses += `bg-red-500`;
-    textClasses = `text-white`;
-  } else { // default
-    buttonClasses += `bg-blue-500`;
-    textClasses = `text-white`;
+// Data Stream Toggle Component
+const DataStreamToggle = ({ 
+  stream, 
+  onToggle, 
+  isLoading 
+}: {
+  stream: any;
+  onToggle: (enabled: boolean) => void;
+  isLoading: boolean;
+}) => {
+  // Safety check for stream data
+  if (!stream) {
+    console.warn('DataStreamToggle: stream is null or undefined');
+    return null;
   }
 
-  if (size === 'sm') {
-    buttonClasses += ` h-8 px-3 text-sm`;
-  } else if (size === 'lg') {
-    buttonClasses += ` h-12 px-8 text-lg`;
-  } else if (size === 'icon') {
-    buttonClasses += ` h-10 w-10`; // Fixed width/height for icon
-  } else { // default
-    buttonClasses += ` h-10 px-4`;
-  }
+  const getIcon = (type: string) => {
+    switch (type) {
+      case 'location': return MapPin;
+      case 'spatial': return Navigation;
+      case 'behavioral': return Zap;
+      case 'email_metadata': return Mail;
+      default: return Wallet;
+    }
+  };
 
-  if (disabled) {
-    buttonClasses += ` opacity-50`;
-  }
+  const getDisplayName = (type: string) => {
+    switch (type) {
+      case 'location': return 'Location Data';
+      case 'spatial': return 'Spatial Movement';
+      case 'behavioral': return 'Behavioral Data';
+      case 'email_metadata': return 'Email Metadata';
+      default: return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+  };
+
+  const Icon = getIcon(stream.stream_type || 'unknown');
 
   return (
-    <StyledTouchableOpacity
-      onPress={onPress}
-      disabled={disabled}
-      className={`${buttonClasses} ${className}`}
-    >
-      {typeof children === 'string' ? (
-        <StyledText className={`${textClasses}`}>{children}</StyledText>
-      ) : (
-        children
-      )}
-    </StyledTouchableOpacity>
+    <View style={{
+      backgroundColor: 'white',
+      borderRadius: 8,
+      padding: 16,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+      borderWidth: 1,
+      borderColor: '#e5e7eb'
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Icon size={24} color="#6b7280" style={{ marginRight: 12 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '500', color: '#111827' }}>
+              {getDisplayName(stream.stream_type || 'unknown')}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <View style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 12,
+                backgroundColor: (stream.is_enabled === true) ? '#dcfce7' : '#f3f4f6'
+              }}>
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '500',
+                  color: (stream.is_enabled === true) ? '#166534' : '#374151'
+                }}>
+                  {(stream.is_enabled === true) ? 'Enabled' : 'Disabled'}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>
+                1 pt/data
+              </Text>
+            </View>
+          </View>
+        </View>
+        
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <Switch
+              value={stream.is_enabled === true}
+              onValueChange={(value) => {
+                try {
+                  onToggle(value);
+                } catch (error) {
+                  console.error('Error in Switch onValueChange:', error);
+                }
+              }}
+              trackColor={{ false: '#767577', true: '#81b0ff' }}
+              thumbColor={(stream.is_enabled === true) ? '#f5dd4b' : '#f4f3f4'}
+              ios_backgroundColor="#3e3e3e"
+            />
+          )}
+        </View>
+      </View>
+      
+      <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>Data Points</Text>
+          <Text style={{ fontSize: 12, fontWeight: '500' }}>{stream.data_count || 0}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>Last Sync</Text>
+          <Text style={{ fontSize: 12, fontWeight: '500' }}>
+            {stream.last_sync_at ? new Date(stream.last_sync_at).toLocaleDateString() : 'Never'}
+          </Text>
+        </View>
+      </View>
+    </View>
   );
-});
-
-// Replicating simplified Input component
-interface InputProps {
-  id?: string;
-  placeholder?: string;
-  value?: string;
-  onChangeText?: (text: string) => void;
-  secureTextEntry?: boolean;
-  keyboardType?: TextInput['props']['keyboardType'];
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  className?: string;
-}
-const Input = styled(({ className, ...props }: InputProps) => (
-  <StyledTextInput
-    className={`border border-gray-300 rounded-md p-2 text-base ${className}`}
-    {...props}
-  />
-));
-
-// Replicating simplified Label component
-interface LabelProps {
-  children: React.ReactNode;
-  className?: string;
-}
-const Label = styled(({ children, className }: LabelProps) => (
-  <StyledText className={`text-sm font-medium text-gray-700 mb-1 ${className}`}>
-    {children}
-  </StyledText>
-));
-
-// Replicating simplified Badge component
-interface BadgeProps {
-  children: React.ReactNode;
-  variant?: 'default' | 'outline' | 'secondary' | 'destructive';
-  className?: string;
-}
-const Badge = styled(({ children, variant = 'default', className }: BadgeProps) => {
-  let badgeClasses = `px-2.5 py-0.5 rounded-full text-xs font-semibold `;
-  let textClasses = `text-white`;
-
-  if (variant === 'outline') {
-    badgeClasses += `border border-gray-300 bg-white`;
-    textClasses = `text-gray-700`;
-  } else if (variant === 'secondary') {
-    badgeClasses += `bg-gray-200`;
-    textClasses = `text-gray-800`;
-  } else if (variant === 'destructive') {
-    badgeClasses += `bg-red-500`;
-    textClasses = `text-white`;
-  } else { // default
-    badgeClasses += `bg-gray-800`;
-    textClasses = `text-white`;
-  }
-
-  return (
-    <StyledView className={`${badgeClasses} ${className}`}>
-      {typeof children === 'string' ? (
-        <StyledText className={`${textClasses}`}>{children}</StyledText>
-      ) : (
-        children
-      )}
-    </StyledView>
-  );
-});
-
-
-// Replicating simplified Avatar component
-interface AvatarProps {
-  src?: string;
-  alt?: string;
-  fallback: string;
-  className?: string;
-}
-const Avatar = styled(({ src, alt, fallback, className }: AvatarProps) => (
-  <StyledView className={`w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center ${className}`}>
-    {src ? (
-      <StyledImage source={{ uri: src }} className="w-full h-full" alt={alt || 'avatar'} />
-    ) : (
-      <StyledText className="text-xl font-medium text-gray-600">{fallback}</StyledText>
-    )}
-  </StyledView>
-));
-
-interface AvatarFallbackProps {
-  children: React.ReactNode;
-  className?: string;
-}
-const AvatarFallback = styled(({ children, className }: AvatarFallbackProps) => (
-  <StyledView className={`w-full h-full flex items-center justify-center bg-gray-300 ${className}`}>
-    <StyledText className="text-lg text-gray-600">{children}</StyledText>
-  </StyledView>
-));
-
-interface AvatarImageProps {
-  src?: string;
-  alt?: string;
-  className?: string;
-}
-const AvatarImage = styled(({ src, alt, className }: AvatarImageProps) => (
-  <StyledImage source={{ uri: src }} className={`w-full h-full ${className}`} alt={alt || 'avatar'} />
-));
-
-
-// Simplified Tabs implementation for React Native
-interface TabsProps {
-  defaultValue: string;
-  children: React.ReactNode;
-}
-const Tabs = styled(({ defaultValue, children }: TabsProps) => {
-  const [activeTab, setActiveTab] = useState(defaultValue);
-
-  // Filter children to get TabsList and TabsContent
-  const tabsList = (Array.isArray(children) ? children : [children]).find(
-    (child: any) => child && child.props && child.props.isTabsList
-  );
-  const tabsContent = (Array.isArray(children) ? children : [children]).filter(
-    (child: any) => child && child.props && child.props.isTabsContent
-  );
-
-  return (
-    <StyledView>
-      {tabsList && React.cloneElement(tabsList, { activeTab, setActiveTab })}
-      {tabsContent.map((child: any) =>
-        React.cloneElement(child, { key: child.props.value, activeTab })
-      )}
-    </StyledView>
-  );
-});
-
-interface TabsListProps {
-  children: React.ReactNode;
-  activeTab: string;
-  setActiveTab: (value: string) => void;
-  className?: string;
-  isTabsList?: boolean; // Marker for Tabs component
-}
-const TabsList = styled(({ children, activeTab, setActiveTab, className, isTabsList }: TabsListProps) => (
-  <StyledView className={`flex-row rounded-lg p-1 bg-gray-200 mb-6 ${className}`}>
-    {(Array.isArray(children) ? children : [children]).map((child: any) =>
-      React.cloneElement(child, {
-        key: child.props.value,
-        activeTab,
-        onPress: () => setActiveTab(child.props.value),
-      })
-    )}
-  </StyledView>
-), { isTabsList: true }); // Mark as TabsList
-
-interface TabsTriggerProps {
-  children: React.ReactNode;
-  value: string;
-  activeTab?: string; // Passed from TabsList
-  onPress?: () => void; // Passed from TabsList
-  className?: string;
-}
-const TabsTrigger = styled(({ children, value, activeTab, onPress, className }: TabsTriggerProps) => (
-  <StyledTouchableOpacity
-    className={`flex-1 items-center py-2 rounded-md ${activeTab === value ? 'bg-white shadow' : ''} ${className}`}
-    onPress={onPress}
-  >
-    {typeof children === 'string' ? (
-      <StyledText className={`${activeTab === value ? 'text-black font-semibold' : 'text-gray-600'}`}>
-        {children}
-      </StyledText>
-    ) : (
-      children
-    )}
-  </StyledTouchableOpacity>
-));
-
-interface TabsContentProps {
-  children: React.ReactNode;
-  value: string;
-  activeTab?: string; // Passed from Tabs
-  className?: string;
-  isTabsContent?: boolean; // Marker for Tabs component
-}
-const TabsContent = styled(({ children, value, activeTab, className, isTabsContent }: TabsContentProps) => (
-  activeTab === value ? <StyledView className={`${className}`}>{children}</StyledView> : null
-), { isTabsContent: true }); // Mark as TabsContent
-
-
-// Placeholder for KYCStatus and KYCAdminPanel components if they are not provided
-const KYCStatus = () => (
-  <Card className="glass-card mb-4">
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <Shield className="w-5 h-5" />
-        KYC Status
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="flex-row items-center justify-between">
-      <StyledView className="flex-row items-center gap-2">
-        <AlertCircle className="w-5 h-5 text-yellow-500" />
-        <StyledText className="text-sm font-medium text-yellow-500">
-          Verification Pending
-        </StyledText>
-      </StyledView>
-      <Button size="sm" onPress={() => console.log('Start KYC Process')}>
-        Start Verification
-      </Button>
-    </CardContent>
-  </Card>
-);
-
-const KYCAdminPanel = () => (
-  <Card className="glass-card">
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <Shield className="w-5 h-5" />
-        KYC Admin Panel (Placeholder)
-      </CardTitle>
-    </CardHeader>
-    <CardContent>
-      <StyledText className="text-muted-foreground text-sm">
-        This is a placeholder for the KYC Admin Panel functionality.
-      </StyledText>
-    </CardContent>
-  </Card>
-);
-
-
-const streamIcons = {
-  steps: Heart,
-  device_metadata: Smartphone,
-  email_metadata: Mail,
-  wifi: Wifi,
-  spatial: Navigation,
-  location: MapPin,
-  behavioral: Zap,
 };
 
-const streamNames = {
-  steps: "Steps & Activity Tracking",
-  device_metadata: "Device Information",
-  email_metadata: "Gmail Data Access",
-  wifi: "WiFi Network Sharing",
-  spatial: "Spatial Movement Data",
-  location: "Location Data",
-  behavioral: "Behavioral Data",
-};
-
-export default function Settings() {
-  const { user, signOut } = useAuth(); // Assuming useAuth is adapted for RN
-  const { profile, loading: profileLoading, updateProfile } = useProfile(); // Assuming useProfile is adapted for RN
-  const { dataStreams, loading: streamsLoading, updateStreamStatus, refreshStreams } = useDataStreams(); // Assuming useDataStreams is adapted for RN
-
-  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
-  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
-  const [isRefreshingStreams, setIsRefreshingStreams] = useState(false);
-  const [currentTab, setCurrentTab] = useState('profile'); // State for managing tabs
-
-  // State for profile form fields
-  const [firstName, setFirstName] = useState(profile?.first_name || '');
-  const [lastName, setLastName] = useState(profile?.last_name || '');
+// Main Settings Component
+export default function Settings({ route }: any) {
+  // Use actual hooks for database integration
+  const { user, signOut, updatePassword } = useAuth();
+  const { profile, loading: profileLoading, updateProfile } = useProfile();
+  const { dataStreams, loading: streamsLoading, toggleDataStream, refreshDataStreams } = useDataStreams();
+  const { 
+    stats: emailStats, 
+    collectEmailMetadata, 
+    resetEmailMetadata,
+    isCollecting: emailCollecting 
+  } = useEmailMetadata();
+  
+  // Check if user is logged in with Gmail
+  const isGmailUser = user?.email?.endsWith('@gmail.com') || false;
+  
+  // State
+  const [currentTab, setCurrentTab] = useState(route?.params?.initialTab || 'profile');
+  const [loadingStates, setLoadingStates] = useState<{[key: string]: boolean}>({});
+  
+  // Refs for scrolling
+  const scrollViewRef = useRef<ScrollView>(null);
+  const dataStreamsRef = useRef<View>(null);
+  const [dataStreamsY, setDataStreamsY] = useState(0);
+  
+  // Handle route parameter changes
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setCurrentTab(route.params.initialTab);
+      
+      // If navigating to data-streams, scroll immediately
+      if (route.params.initialTab === 'data-streams') {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: 200, animated: true });
+        }, 100);
+      }
+    }
+  }, [route?.params?.initialTab]);
+  
+  // Handle scrolling to data streams when tab changes to data-streams
+  useEffect(() => {
+    if (currentTab === 'data-streams') {
+      // Delay to ensure the tab content is fully rendered
+      setTimeout(() => {
+        if (dataStreamsRef.current && scrollViewRef.current) {
+          dataStreamsRef.current.measureLayout(
+            scrollViewRef.current as any,
+            (x, y) => {
+              console.log('Measured position:', x, y);
+              scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
+            },
+            () => {
+              console.log('Measure error');
+              // Fallback: scroll to a reasonable position (after header and tabs)
+              scrollViewRef.current?.scrollTo({ y: 200, animated: true });
+            }
+          );
+        } else {
+          // Simple fallback: scroll to a reasonable position
+          scrollViewRef.current?.scrollTo({ y: 200, animated: true });
+        }
+      }, 500);
+    }
+  }, [currentTab]);
+  
+  // Handle data streams section layout
+  const handleDataStreamsLayout = (event: any) => {
+    const { y } = event.nativeEvent.layout;
+    console.log('Data streams layout Y:', y);
+    setDataStreamsY(y);
+  };
+  
+  // Profile state
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  
+  // Password state
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
+  // Update profile form when profile data loads
   useEffect(() => {
     if (profile) {
       setFirstName(profile.first_name || '');
       setLastName(profile.last_name || '');
+      setEmail(user?.email || '');
     }
-  }, [profile]);
+  }, [profile, user]);
 
-  const handleProfileUpdate = async () => {
-    setIsSubmittingProfile(true);
-    await updateProfile({ first_name: firstName, last_name: lastName });
-    // In a real app, you might show a success message via a toast or alert
-    console.log('Profile updated successfully!');
-    setIsSubmittingProfile(false);
+  // Ensure email_metadata stream exists for Gmail users
+  useEffect(() => {
+    if (user && isGmailUser && refreshDataStreams) {
+      refreshDataStreams();
+    }
+  }, [user, isGmailUser, refreshDataStreams]);
+
+  const handleStreamToggle = async (streamId: string, enabled: boolean) => {
+    // Safety check
+    if (!streamId) {
+      console.error('Invalid streamId:', streamId);
+      Alert.alert('Error', 'Invalid stream ID');
+      return;
+    }
+    
+    console.log(`Toggling stream ${streamId} to ${enabled}`);
+    
+    // Set loading state for this specific stream
+    setLoadingStates(prev => ({ ...prev, [streamId]: true }));
+    
+    try {
+      // Use the actual toggleDataStream function from the hook
+      await toggleDataStream(streamId, enabled);
+      
+      console.log(`Successfully toggled stream ${streamId} to ${enabled}`);
+      
+    } catch (error) {
+      console.error(`Error toggling stream ${streamId}:`, error);
+      Alert.alert('Error', 'Failed to update data stream');
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [streamId]: false }));
+    }
   };
 
-  const handleChangePassword = async () => {
+  const handleProfileUpdate = async () => {
+    try {
+      // Use the actual updateProfile function from the hook
+      const { error } = await updateProfile({
+        first_name: firstName,
+        last_name: lastName
+      });
+      
+      if (error) {
+        Alert.alert('Error', 'Failed to update profile');
+      } else {
+        Alert.alert('Success', 'Profile updated successfully');
+      }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      Alert.alert('Error', 'Failed to update profile');
+    }
+  };
+
+  const handlePasswordChange = async () => {
     setPasswordError('');
+    
     if (newPassword !== confirmPassword) {
       setPasswordError('Passwords do not match');
       return;
     }
+    
     if (newPassword.length < 6) {
       setPasswordError('Password must be at least 6 characters long');
       return;
     }
-    setIsSubmittingPassword(true);
-    // This assumes a supabase.auth.updateUser method exists, if not,
-    // you'd need to implement password change logic in useAuth or similar.
-    // For now, it's a placeholder.
-    console.log('Attempting to change password...');
-    // await supabase.auth.updateUser({ password: newPassword });
-    console.log('Password change initiated (check Supabase for actual implementation).');
-    setNewPassword('');
-    setConfirmPassword('');
-    setIsSubmittingPassword(false);
-  };
-
-  const handleStreamToggle = async (streamType: string, isEnabled: boolean) => {
-    await updateStreamStatus(streamType, isEnabled);
-    console.log(`Stream ${streamType} toggled to ${isEnabled}`);
-  };
-
-  const handleRefreshStreams = async () => {
-    setIsRefreshingStreams(true);
-    // In React Native, window.location.reload() is not available.
-    // Instead, you re-fetch data using the hook's refresh function.
-    await refreshStreams();
-    setIsRefreshingStreams(false);
-    console.log('Data streams refreshed.');
+    
+    try {
+      const { error } = await updatePassword(newPassword);
+      
+      if (error) {
+        Alert.alert('Error', error.message || 'Failed to update password');
+      } else {
+        Alert.alert('Success', 'Password updated successfully');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error) {
+      console.error('Password change error:', error);
+      Alert.alert('Error', 'Failed to update password');
+    }
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    // In a real React Native app, you would navigate to the Auth screen
-    console.log('User signed out.');
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              console.log('User signed out successfully');
+            } catch (error) {
+              console.error('Error signing out:', error);
+              Alert.alert('Error', 'Failed to sign out');
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (profileLoading || streamsLoading) {
     return (
-      <StyledView className="flex-1 justify-center items-center bg-gray-100">
-        <ActivityIndicator size="large" color="#0000ff" />
-        <StyledText className="text-xl font-bold mt-4">Loading settings...</StyledText>
-      </StyledView>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9fafb' }}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={{ marginTop: 16, color: '#6b7280' }}>Loading settings...</Text>
+      </View>
     );
   }
 
-  const getInitials = (firstName: string | null | undefined, lastName: string | null | undefined) => {
-    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
-  };
-
   return (
-    <StyledView className="flex-1 p-6 bg-gray-100 space-y-6">
-      <StyledView>
-        <StyledText className="text-2xl font-bold text-gray-900 mb-2">Settings</StyledText>
-        <StyledText className="text-sm text-gray-500">
-          Manage your account and preferences.
-        </StyledText>
-      </StyledView>
+    <ScrollView ref={scrollViewRef} style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+      <View style={{ padding: 16 }}>
+        {/* Header */}
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#111827' }}>Settings</Text>
+          <Text style={{ color: '#6b7280', marginTop: 4 }}>Manage your account and preferences</Text>
+        </View>
 
-      <Tabs defaultValue="profile" value={currentTab} onValueChange={setCurrentTab}>
-        <TabsList>
-          <TabsTrigger value="profile">
-            <User className="w-4 h-4 mr-2" />
-            Profile
-          </TabsTrigger>
-          <TabsTrigger value="data-streams">
-            <Wallet className="w-4 h-4 mr-2" />
-            Data Streams
-          </TabsTrigger>
-          <TabsTrigger value="security">
-            <Shield className="w-4 h-4 mr-2" />
-            Security & Privacy
-          </TabsTrigger>
-          <TabsTrigger value="notifications">
-            <Bell className="w-4 h-4 mr-2" />
-            Notifications
-          </TabsTrigger>
-        </TabsList>
 
-        <TabsContent value="profile">
-          <Card className="glass-card mb-4">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Personal Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <StyledView className="flex-row items-center space-x-4">
-                <Avatar fallback={getInitials(profile?.first_name, profile?.last_name)}>
-                  {/* AvatarImage should be passed as a prop if needed */}
-                </Avatar>
-                <StyledView className="flex-1">
-                  <StyledText className="text-lg font-semibold">{profile?.first_name} {profile?.last_name}</StyledText>
-                  <StyledText className="text-sm text-muted-foreground">{user?.email}</StyledText>
-                </StyledView>
-                <Button size="sm" onPress={() => console.log('Upload avatar - not implemented')}>
-                  <Edit2 className="w-4 h-4" />
-                </Button>
-              </StyledView>
+        {/* Tab Navigation */}
+        <View style={{
+          flexDirection: 'row',
+          backgroundColor: 'white',
+          borderRadius: 8,
+          padding: 4,
+          marginBottom: 24,
+          borderWidth: 1,
+          borderColor: '#e5e7eb'
+        }}>
+          {[
+            { id: 'profile', label: 'Profile', icon: User },
+            { id: 'data-streams', label: 'Data Streams', icon: Wallet },
+            ...(isGmailUser ? [{ id: 'email-settings', label: 'Email', icon: Mail }] : []),
+            { id: 'security', label: 'Security', icon: Shield },
+            { id: 'notifications', label: 'Notifications', icon: Bell }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = currentTab === tab.id;
+            
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                onPress={() => setCurrentTab(tab.id)}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 12,
+                  paddingHorizontal: 8,
+                  borderRadius: 6,
+                  backgroundColor: isActive ? '#eff6ff' : 'transparent',
+                  borderWidth: isActive ? 1 : 0,
+                  borderColor: isActive ? '#bfdbfe' : 'transparent'
+                }}
+              >
+                <Icon size={16} color={isActive ? '#2563eb' : '#6b7280'} style={{ marginRight: 8 }} />
+                <Text style={{
+                  fontSize: 14,
+                  fontWeight: '500',
+                  color: isActive ? '#2563eb' : '#6b7280'
+                }}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-              <StyledView className="space-y-4">
-                <StyledView className="flex-row gap-4">
-                  <StyledView className="flex-1 space-y-2">
-                    <Label>First Name</Label>
-                    <Input
-                      placeholder="John"
-                      value={firstName}
-                      onChangeText={setFirstName}
-                    />
-                  </StyledView>
-                  <StyledView className="flex-1 space-y-2">
-                    <Label>Last Name</Label>
-                    <Input
-                      placeholder="Doe"
-                      value={lastName}
-                      onChangeText={setLastName}
-                    />
-                  </StyledView>
-                </StyledView>
-                <Button onPress={handleProfileUpdate} disabled={isSubmittingProfile}>
-                  {isSubmittingProfile ? <ActivityIndicator color="#fff" /> : 'Save Changes'}
-                </Button>
-              </StyledView>
-            </CardContent>
-          </Card>
+        {/* Tab Content */}
+        {currentTab === 'profile' && (
+          <View>
+            <View style={{
+              backgroundColor: 'white',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 2,
+              elevation: 2,
+              borderWidth: 1,
+              borderColor: '#e5e7eb'
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <User size={20} color="#6b7280" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>Personal Information</Text>
+              </View>
+              
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>First Name</Text>
+                <TextInput
+                  placeholder="Enter first name"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d1d5db',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 16
+                  }}
+                />
+              </View>
+              
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>Last Name</Text>
+                <TextInput
+                  placeholder="Enter last name"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d1d5db',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 16
+                  }}
+                />
+              </View>
+              
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>Email</Text>
+                <TextInput
+                  placeholder="Enter email"
+                  value={email}
+                  onChangeText={setEmail}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d1d5db',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 16
+                  }}
+                />
+              </View>
+              
+              <TouchableOpacity
+                onPress={handleProfileUpdate}
+                style={{
+                  backgroundColor: '#3b82f6',
+                  borderRadius: 8,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ color: 'white', fontWeight: '500' }}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
-          <KYCStatus />
-        </TabsContent>
+        {currentTab === 'data-streams' && (
+          <View ref={dataStreamsRef} onLayout={handleDataStreamsLayout}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <Text style={{ fontSize: 18, fontWeight: '600' }}>Data Streams</Text>
+              <TouchableOpacity
+                onPress={refreshDataStreams}
+                style={{
+                  backgroundColor: 'white',
+                  borderWidth: 1,
+                  borderColor: '#d1d5db',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center'
+                }}
+              >
+                <RefreshCw size={16} color="#000" style={{ marginRight: 4 }} />
+                <Text style={{ color: '#374151', fontWeight: '500' }}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {dataStreams
+              .filter(stream => {
+                // Filter out email metadata for non-Gmail users
+                if (stream.stream_type === 'email_metadata' && !isGmailUser) {
+                  return false;
+                }
+                return true;
+              })
+              .map((stream) => {
+                // Safety check to prevent crashes
+                if (!stream || !stream.id) {
+                  console.warn('Invalid stream data:', stream);
+                  return null;
+                }
+                
+                return (
+                  <DataStreamToggle
+                    key={stream.id}
+                    stream={stream}
+                    onToggle={(enabled) => handleStreamToggle(stream.id, enabled)}
+                    isLoading={loadingStates[stream.id] || false}
+                  />
+                );
+              })}
+          </View>
+        )}
 
-        <TabsContent value="data-streams">
-          <StyledView className="flex-row items-center justify-between mb-4">
-            <StyledText className="text-lg font-semibold">
-              Manage Data Streams
-            </StyledText>
-            <Button size="sm" variant="outline" onPress={handleRefreshStreams} disabled={isRefreshingStreams}>
-              {isRefreshingStreams ? <ActivityIndicator size="small" color="#000" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-              Refresh
-            </Button>
-          </StyledView>
+        {currentTab === 'email-settings' && isGmailUser && (
+          <View>
+            <View style={{
+              backgroundColor: 'white',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 2,
+              elevation: 2,
+              borderWidth: 1,
+              borderColor: '#e5e7eb'
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <Mail size={20} color="#6b7280" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>Email Metadata Collection</Text>
+              </View>
+              
+              <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 16, lineHeight: 20 }}>
+                Collect email metadata (from, to, subject, date) without accessing email body content or attachments. 
+                Earn 1 point per email collected. Duplicate emails are automatically filtered out.
+              </Text>
+              
+              <View style={{ 
+                backgroundColor: '#f3f4f6', 
+                padding: 12, 
+                borderRadius: 8, 
+                marginBottom: 16 
+              }}>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 8 }}>
+                  Collection Statistics
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>Total Emails</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>
+                      {emailStats.totalEmails}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>Points Earned</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#10b981' }}>
+                      {emailStats.pointsEarned}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>Unread</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#f59e0b' }}>
+                      {emailStats.unreadEmails}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={collectEmailMetadata}
+                  disabled={emailCollecting}
+                  style={{
+                    flex: 1,
+                    backgroundColor: emailCollecting ? '#9ca3af' : '#3b82f6',
+                    borderRadius: 8,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {emailCollecting ? (
+                    <>
+                      <ActivityIndicator size="small" color="white" />
+                      <Text style={{ color: 'white', fontWeight: '500', marginLeft: 8 }}>Collecting...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Mail size={16} color="white" style={{ marginRight: 8 }} />
+                      <Text style={{ color: 'white', fontWeight: '500' }}>Collect Now</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={resetEmailMetadata}
+                  style={{
+                    backgroundColor: 'white',
+                    borderWidth: 1,
+                    borderColor: '#ef4444',
+                    borderRadius: 8,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{ color: '#ef4444', fontWeight: '500' }}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {emailStats.lastCollectionDate && (
+                <View style={{ 
+                  backgroundColor: '#dbeafe', 
+                  padding: 12, 
+                  borderRadius: 8, 
+                  marginTop: 16 
+                }}>
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: '#1e40af' }}>
+                    Last Collection
+                  </Text>
+                  <Text style={{ fontSize: 14, color: '#1e40af', marginTop: 4 }}>
+                    {new Date(emailStats.lastCollectionDate).toLocaleString()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={{
+              backgroundColor: 'white',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 2,
+              elevation: 2,
+              borderWidth: 1,
+              borderColor: '#e5e7eb'
+            }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 12 }}>
+                Privacy & Security
+              </Text>
+              
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+                  ✓ No Email Body Content
+                </Text>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  Only email headers (from, to, subject, date) are collected
+                </Text>
+              </View>
+              
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+                  ✓ No Attachments
+                </Text>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  File attachments are never accessed or stored
+                </Text>
+              </View>
+              
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+                  ✓ Duplicate Prevention
+                </Text>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  Message IDs are tracked to prevent duplicate point awards
+                </Text>
+              </View>
+              
+              <View>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+                  ✓ Secure Storage
+                </Text>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  All data is encrypted and stored securely in our database
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
-          <StyledView className="space-y-4">
-            {dataStreams.map((stream) => {
-              const Icon = streamIcons[stream.stream_type as keyof typeof streamIcons] || Play;
-              const streamName = streamNames[stream.stream_type as keyof typeof streamNames] || 'Unknown Stream';
-              return (
-                <Card key={stream.id} className="glass-card">
-                  <CardContent className="flex-row items-center justify-between">
-                    <StyledView className="flex-row items-center space-x-3">
-                      <Icon className="w-6 h-6 text-gray-700" />
-                      <StyledView>
-                        <StyledText className="font-medium">{streamName}</StyledText>
-                        <Badge variant={stream.is_enabled ? 'default' : 'secondary'} className="mt-1">
-                          {stream.is_enabled ? 'Enabled' : 'Disabled'}
-                        </Badge>
-                      </StyledView>
-                    </StyledView>
-                    <Switch
-                      value={stream.is_enabled}
-                      onValueChange={(newValue) => handleStreamToggle(stream.stream_type, newValue)}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </StyledView>
-        </TabsContent>
-
-        <TabsContent value="security">
-          <Card className="glass-card mb-4">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <KeyRound className="w-5 h-5" />
-                Change Password
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <StyledView className="space-y-2">
-                <Label>New Password</Label>
-                <Input
+        {currentTab === 'security' && (
+          <View>
+            <View style={{
+              backgroundColor: 'white',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 2,
+              elevation: 2,
+              borderWidth: 1,
+              borderColor: '#e5e7eb'
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <Shield size={20} color="#6b7280" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>Change Password</Text>
+              </View>
+              
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>New Password</Text>
+                <TextInput
                   placeholder="Enter new password"
-                  secureTextEntry
                   value={newPassword}
                   onChangeText={setNewPassword}
-                />
-              </StyledView>
-              <StyledView className="space-y-2">
-                <Label>Confirm New Password</Label>
-                <Input
-                  placeholder="Confirm new password"
                   secureTextEntry
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d1d5db',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 16
+                  }}
+                />
+              </View>
+              
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>Confirm Password</Text>
+                <TextInput
+                  placeholder="Confirm new password"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d1d5db',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 16
+                  }}
                 />
-              </StyledView>
+              </View>
+              
               {passwordError && (
-                <StyledText className="text-red-500 text-sm">{passwordError}</StyledText>
+                <Text style={{ color: '#ef4444', fontSize: 14, marginBottom: 16 }}>{passwordError}</Text>
               )}
-              <Button onPress={handleChangePassword} disabled={isSubmittingPassword}>
-                {isSubmittingPassword ? <ActivityIndicator color="#fff" /> : 'Update Password'}
-              </Button>
-            </CardContent>
-          </Card>
+              
+              <TouchableOpacity
+                onPress={handlePasswordChange}
+                style={{
+                  backgroundColor: '#3b82f6',
+                  borderRadius: 8,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ color: 'white', fontWeight: '500' }}>Update Password</Text>
+              </TouchableOpacity>
+            </View>
 
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <LogOut className="w-5 h-5" />
-                Account Actions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <StyledView className="flex-row items-center justify-between">
-                <StyledView>
-                  <StyledText className="font-medium">Sign Out</StyledText>
-                  <StyledText className="text-sm text-muted-foreground">End your session</StyledText>
-                </StyledView>
-                <Button variant="outline" onPress={handleSignOut}>
-                  Sign Out
-                </Button>
-              </StyledView>
-              {/* For Delete Account, would need a confirmation dialog and backend logic */}
-              <StyledView className="flex-row items-center justify-between">
-                <StyledView>
-                  <StyledText className="font-medium">Delete Account</StyledText>
-                  <StyledText className="text-sm text-muted-foreground">Permanently delete your account and data</StyledText>
-                </StyledView>
-                <Button variant="destructive" onPress={() => console.log('Delete account - confirmation needed')}>
-                  Delete
-                </Button>
-              </StyledView>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            <View style={{
+              backgroundColor: 'white',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 2,
+              elevation: 2,
+              borderWidth: 1,
+              borderColor: '#e5e7eb'
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View>
+                  <Text style={{ fontWeight: '500', color: '#111827' }}>Sign Out</Text>
+                  <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>Sign out of your account</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleSignOut}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center'
+                  }}
+                >
+                  <LogOut size={16} color="white" style={{ marginRight: 4 }} />
+                  <Text style={{ color: 'white', fontWeight: '500' }}>Sign Out</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
 
-        <TabsContent value="notifications">
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5" />
-                Notifications
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <StyledView className="space-y-3">
-                <StyledView className="flex-row items-center justify-between">
-                  <StyledView>
-                    <StyledText className="font-medium">New Survey Alerts</StyledText>
-                    <StyledText className="text-sm text-muted-foreground">Get notified about new earning opportunities</StyledText>
-                  </StyledView>
-                  {/* This would be a Switch in RN */}
-                  <Switch value={true} onValueChange={(value) => console.log('Toggle New Survey Alerts', value)} />
-                </StyledView>
-
-                <StyledView className="flex-row items-center justify-between">
-                  <StyledView>
-                    <StyledText className="font-medium">Earnings Updates</StyledText>
-                    <StyledText className="text-sm text-muted-foreground">Weekly summary of your earnings</StyledText>
-                  </StyledView>
-                  {/* This would be a Switch in RN */}
-                  <Switch value={true} onValueChange={(value) => console.log('Toggle Earnings Updates', value)} />
-                </StyledView>
-              </StyledView>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </StyledView>
+        {currentTab === 'notifications' && (
+          <View>
+            <View style={{
+              backgroundColor: 'white',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 2,
+              elevation: 2,
+              borderWidth: 1,
+              borderColor: '#e5e7eb'
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <Bell size={20} color="#6b7280" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>Notifications</Text>
+              </View>
+              
+              <View style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '500', color: '#111827' }}>New Survey Alerts</Text>
+                    <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>Get notified about new earning opportunities</Text>
+                  </View>
+                  <Switch value={true} onValueChange={() => {}} />
+                </View>
+              </View>
+              
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '500', color: '#111827' }}>Earnings Updates</Text>
+                    <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>Weekly summary of your points</Text>
+                  </View>
+                  <Switch value={true} onValueChange={() => {}} />
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+    </ScrollView>
   );
 }

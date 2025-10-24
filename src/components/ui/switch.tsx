@@ -1,7 +1,7 @@
 import * as React from "react"
 import { TouchableOpacity, View } from "react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface SwitchProps {
   checked?: boolean;

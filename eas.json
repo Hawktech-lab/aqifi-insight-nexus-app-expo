@@ -4,13 +4,32 @@
   },
   "build": {
     "development": {
-      "developmentClient": false,
-      "distribution": "internal"
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "resourceClass": "medium"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "resourceClass": "medium"
+      }
     },
-    "production": {}
+    "production": {
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "resourceClass": "medium"
+      }
+    }
   },
   "submit": {
     "production": {}

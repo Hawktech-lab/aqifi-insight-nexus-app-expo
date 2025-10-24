@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
 
 export function useAdminCheck() {
   const { user } = useAuth();
@@ -8,37 +8,46 @@ export function useAdminCheck() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
     const checkAdminRole = async () => {
       if (!user) {
-        setIsAdmin(false);
-        setLoading(false);
+        if (isMounted) {
+          setIsAdmin(false);
+          setLoading(false);
+        }
         return;
       }
       
       try {
-        console.log('Admin Check - User ID:', user.id);
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('role')
           .eq('user_id', user.id)
           .single();
         
-        console.log('Admin Check - Profile data:', profile);
-        console.log('Admin Check - Query error:', error);
+        if (!isMounted) return;
         
         const isAdminUser = profile?.role === 'admin';
-        console.log('Admin Check - Is admin:', isAdminUser);
         setIsAdmin(isAdminUser);
       } catch (error) {
         console.error('Error checking admin role:', error);
-        setIsAdmin(false);
+        if (isMounted) {
+          setIsAdmin(false);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     checkAdminRole();
-  }, [user]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]); // Only depend on user.id, not the entire user object
 
   return { isAdmin, loading };
 }

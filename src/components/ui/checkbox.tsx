@@ -2,7 +2,7 @@ import * as React from "react"
 import { TouchableOpacity, View } from "react-native"
 import { Check } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface CheckboxProps {
   checked?: boolean;

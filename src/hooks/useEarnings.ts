@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
+import type { Tables } from '../integrations/supabase/types';
 
 export function useEarnings() {
   const { user } = useAuth();

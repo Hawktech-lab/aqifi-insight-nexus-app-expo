@@ -1,349 +1,168 @@
 import { useState, useEffect, ReactNode } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView } from 'react-native';
-import { supabase } from '@/integrations/supabase/client'; // Assuming this path is correct
-import { useAuth } from '@/contexts/AuthContext'; // Assuming this path is correct
-import { styled } from 'nativewind'; // For applying Tailwind classes
-import {
-  Plus, ExternalLink, Users, Award, FileText, Shield, UserCheck, UserX,
-  BarChart3, TrendingUp, Clock, DollarSign
-} from 'lucide-react-native'; // Assuming lucide-react-native is installed
+import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView, FlatList } from 'react-native';
+import { supabase } from '../integrations/supabase/client';
+import { useAuth } from '../contexts/AuthContext';
+import Icon from 'react-native-vector-icons/Ionicons';
+import AdminConfiguration from './AdminConfiguration';
 
-// Placeholder for custom components. In a real app, you'd build these robustly.
-
-// Styled components using Nativewind
-const StyledView = styled(View);
-const StyledText = styled(Text);
-const StyledTouchableOpacity = styled(TouchableOpacity);
-const StyledTextInput = styled(TextInput);
-
-// Mock `useToast` for React Native. Use a dedicated library like `react-native-toast-message`
-// or `react-native-popup-menu` in a real application.
+// Enhanced toast implementation
 const useToast = () => {
   return {
     toast: ({ title, description, variant }: { title: string; description?: string; variant?: 'default' | 'destructive' }) => {
-      Alert.alert(title, description);
+      Alert.alert(title, description || '', [
+        { text: 'OK', style: variant === 'destructive' ? 'destructive' : 'default' }
+      ]);
     }
   };
 };
 
-// Simplified Card Components (reusing logic from Activity.tsx conversion)
+// Enhanced Card Components
 interface CardProps {
   children: ReactNode;
-  className?: string;
+  style?: any;
 }
 
-const Card = styled(({ children, className }: CardProps) => (
-  <StyledView className={`rounded-lg bg-white shadow-md ${className}`}>
+const Card = ({ children, style }: CardProps) => (
+  <View style={[{
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  }, style]}>
     {children}
-  </StyledView>
-));
+  </View>
+);
 
-interface CardHeaderProps {
-  children: ReactNode;
-  className?: string;
-}
-const CardHeader = styled(({ children, className }: CardHeaderProps) => (
-  <StyledView className={`p-4 pb-0 ${className}`}>
-    {children}
-  </StyledView>
-));
-
-interface CardTitleProps {
-  children: ReactNode;
-  className?: string;
-}
-const CardTitle = styled(({ children, className }: CardTitleProps) => (
-  <StyledText className={`text-lg font-semibold ${className}`}>
-    {children}
-  </StyledText>
-));
-
-interface CardContentProps {
-  children: ReactNode;
-  className?: string;
-}
-const CardContent = styled(({ children, className }: CardContentProps) => (
-  <StyledView className={`p-4 pt-3 ${className}`}>
-    {children}
-  </StyledView>
-));
-
+// Enhanced Button component
 interface ButtonProps {
   children: ReactNode;
-  onPress: () => void; // Changed onClick to onPress for React Native
+  onPress: () => void;
   disabled?: boolean;
-  variant?: 'outline' | 'default' | 'destructive';
+  variant?: 'outline' | 'default' | 'destructive' | 'secondary';
   size?: 'sm' | 'default';
-  className?: string;
+  style?: any;
 }
-const Button = styled(({ children, onPress, disabled, variant = 'default', size = 'default', className }: ButtonProps) => {
-  const baseClasses = `rounded-lg flex-row items-center justify-center ${disabled ? 'opacity-50' : ''}`;
-  const variantClasses = {
-    default: 'bg-blue-500',
-    outline: 'border border-gray-300 bg-white',
-    destructive: 'bg-red-500',
+
+const Button = ({ children, onPress, disabled, variant = 'default', size = 'default', style }: ButtonProps) => {
+  const baseStyle = {
+    borderRadius: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    opacity: disabled ? 0.5 : 1,
   };
-  const sizeClasses = {
-    default: 'px-4 py-2',
-    sm: 'px-3 py-1.5 text-sm',
+
+  const variantStyles = {
+    default: { backgroundColor: '#007AFF' },
+    outline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#007AFF' },
+    destructive: { backgroundColor: '#FF3B30' },
+    secondary: { backgroundColor: '#8E8E93' },
+  };
+
+  const sizeStyles = {
+    default: { paddingHorizontal: 16, paddingVertical: 12 },
+    sm: { paddingHorizontal: 12, paddingVertical: 8 },
   };
 
   return (
-    <StyledTouchableOpacity
+    <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      style={[baseStyle, variantStyles[variant], sizeStyles[size], style]}
     >
       {children}
-    </StyledTouchableOpacity>
-  );
-});
-
-interface InputProps {
-  id?: string;
-  value: string | number;
-  onChangeText: (text: string) => void; // Changed onChange to onChangeText
-  placeholder?: string;
-  keyboardType?: TextInput['props']['keyboardType'];
-  secureTextEntry?: boolean;
-  required?: boolean;
-  step?: string; // For number inputs
-  className?: string;
-}
-const Input = styled(({ value, onChangeText, ...props }: InputProps) => (
-  <StyledTextInput
-    className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-800"
-    value={String(value)} // Ensure value is a string for TextInput
-    onChangeText={onChangeText}
-    {...props}
-  />
-));
-
-interface LabelProps {
-  htmlFor?: string; // Not used in RN directly for association, but good for context
-  children: ReactNode;
-  className?: string;
-}
-const Label = styled(({ children, className }: LabelProps) => (
-  <StyledText className={`text-sm font-medium text-gray-700 mb-1 ${className}`}>
-    {children}
-  </StyledText>
-));
-
-interface TextareaProps {
-  id?: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  className?: string;
-}
-const Textarea = styled(({ value, onChangeText, ...props }: TextareaProps) => (
-  <StyledTextInput
-    className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-800 h-24"
-    multiline
-    numberOfLines={4}
-    value={value}
-    onChangeText={onChangeText}
-    textAlignVertical="top" // Ensures text starts from the top
-    {...props}
-  />
-));
-
-// Simplified Tabs Components
-interface TabsProps {
-  defaultValue: string;
-  children: ReactNode;
-  className?: string;
-}
-interface TabsContextType {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-}
-const TabsContext = useState<TabsContextType | undefined>(undefined);
-
-const Tabs = styled(({ defaultValue, children, className }: TabsProps) => {
-  const [activeTab, setActiveTab] = useState(defaultValue);
-  return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab }}>
-      <StyledView className={className}>
-        {children}
-      </StyledView>
-    </TabsContext.Provider>
-  );
-});
-
-interface TabsListProps {
-  children: ReactNode;
-  className?: string;
-}
-const TabsList = styled(({ children, className }: TabsListProps) => (
-  <StyledView className={`flex-row justify-around p-1 bg-gray-200 rounded-lg ${className}`}>
-    {children}
-  </StyledView>
-));
-
-interface TabsTriggerProps {
-  value: string;
-  children: ReactNode;
-  className?: string;
-}
-const TabsTrigger = styled(({ value, children, className }: TabsTriggerProps) => {
-  const [context] = TabsContext;
-  if (!context) throw new Error("TabsTrigger must be used within Tabs");
-  const { activeTab, setActiveTab } = context;
-
-  const isActive = activeTab === value;
-  return (
-    <StyledTouchableOpacity
-      onPress={() => setActiveTab(value)}
-      className={`flex-1 flex-row items-center justify-center p-2 rounded-md ${isActive ? 'bg-white shadow-sm' : 'bg-transparent'} ${className}`}
-    >
-      {children}
-    </StyledTouchableOpacity>
-  );
-});
-
-interface TabsContentProps {
-  value: string;
-  children: ReactNode;
-  className?: string;
-}
-const TabsContent = styled(({ value, children, className }: TabsContentProps) => {
-  const [context] = TabsContext;
-  if (!context) throw new Error("TabsContent must be used within Tabs");
-  const { activeTab } = context;
-
-  if (activeTab !== value) return null;
-  return <StyledView className={className}>{children}</StyledView>;
-});
-
-// Simplified Table Components using Views and Texts
-interface TableProps {
-  children: ReactNode;
-  className?: string;
-}
-const Table = styled(({ children, className }: TableProps) => (
-  <StyledView className={`border border-gray-200 rounded-lg overflow-hidden ${className}`}>
-    {children}
-  </StyledView>
-));
-
-interface TableHeaderProps {
-  children: ReactNode;
-  className?: string;
-}
-const TableHeader = styled(({ children, className }: TableHeaderProps) => (
-  <StyledView className={`bg-gray-50 border-b border-gray-200 ${className}`}>
-    <StyledView className="flex-row items-center p-3"> {/* For row structure */}
-      {children}
-    </StyledView>
-  </StyledView>
-));
-
-interface TableHeadProps {
-  children: ReactNode;
-  className?: string;
-}
-const TableHead = styled(({ children, className }: TableHeadProps) => (
-  <StyledText className={`flex-1 text-xs font-semibold uppercase text-gray-500 ${className}`}>
-    {children}
-  </StyledText>
-));
-
-interface TableBodyProps {
-  children: ReactNode;
-  className?: string;
-}
-const TableBody = styled(({ children, className }: TableBodyProps) => (
-  <StyledView className={className}>
-    {children}
-  </StyledView>
-));
-
-interface TableRowProps {
-  children: ReactNode;
-  className?: string;
-}
-const TableRow = styled(({ children, className }: TableRowProps) => (
-  <StyledView className={`flex-row items-center border-b border-gray-100 last:border-b-0 p-3 ${className}`}>
-    {children}
-  </StyledView>
-));
-
-interface TableCellProps {
-  children: ReactNode;
-  className?: string;
-}
-const TableCell = styled(({ children, className }: TableCellProps) => (
-  <StyledView className={`flex-1 ${className}`}>
-    <StyledText className="text-sm text-gray-800">{children}</StyledText>
-  </StyledView>
-));
-
-
-// Reusing Badge from Activity.tsx conversion
-interface BadgeProps {
-  children: ReactNode;
-  variant?: 'default' | 'secondary' | 'destructive' | 'outline';
-  className?: string;
-}
-const Badge = styled(({ children, variant = 'default', className }: BadgeProps) => {
-  const baseClasses = `px-3 py-1 rounded-full text-xs font-semibold flex items-center justify-center`;
-  const variantClasses = {
-    default: 'bg-blue-500',
-    secondary: 'bg-gray-200',
-    destructive: 'bg-red-500',
-    outline: 'border border-gray-300 bg-white',
-  };
-  const textClasses = {
-    default: 'text-white',
-    secondary: 'text-gray-700',
-    destructive: 'text-white',
-    outline: 'text-gray-700',
-  };
-
-  return (
-    <StyledView className={`${baseClasses} ${variantClasses[variant]} ${className}`}>
-      <StyledText className={`${textClasses[variant]}`}>{children}</StyledText>
-    </StyledView>
-  );
-});
-
-// Assuming KYCAdminPanel is a separate component that also needs conversion
-// For now, it's just imported as-is.
-interface KYCAdminPanelProps {
-  // Define props if any
-}
-const KYCAdminPanel = (props: KYCAdminPanelProps) => {
-  // This would be your React Native KYCAdminPanel component
-  return (
-    <StyledView className="p-4 bg-white rounded-lg shadow-md">
-      <StyledText className="text-lg font-semibold">KYC Admin Panel Placeholder</StyledText>
-      <StyledText className="text-sm text-gray-600 mt-2">
-        Integrate your React Native KYC component here.
-      </StyledText>
-    </StyledView>
+    </TouchableOpacity>
   );
 };
 
+// Enhanced Input component
+interface InputProps {
+  value: string | number;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: TextInput['props']['keyboardType'];
+  secureTextEntry?: boolean;
+  style?: any;
+}
+
+const Input = ({ value, onChangeText, ...props }: InputProps) => (
+  <TextInput
+    style={[{
+      width: '100%',
+      padding: 12,
+      borderWidth: 1,
+      borderColor: '#E5E5EA',
+      borderRadius: 8,
+      backgroundColor: '#fff',
+      color: '#000',
+      fontSize: 16,
+    }, props.style]}
+    value={String(value)}
+    onChangeText={onChangeText}
+    {...props}
+  />
+);
+
+// Enhanced Badge component
+interface BadgeProps {
+  children: ReactNode;
+  variant?: 'default' | 'secondary' | 'destructive' | 'outline';
+  style?: any;
+}
+
+const Badge = ({ children, variant = 'default', style }: BadgeProps) => {
+  const baseStyle = {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start' as const,
+  };
+
+  const variantStyles = {
+    default: { backgroundColor: '#007AFF' },
+    secondary: { backgroundColor: '#8E8E93' },
+    destructive: { backgroundColor: '#FF3B30' },
+    outline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#007AFF' },
+  };
+
+  const textStyles = {
+    default: { color: '#fff' },
+    secondary: { color: '#fff' },
+    destructive: { color: '#fff' },
+    outline: { color: '#007AFF' },
+  };
+
+  return (
+    <View style={[baseStyle, variantStyles[variant], style]}>
+      <Text style={[{ fontSize: 12, fontWeight: '600' }, textStyles[variant]]}>
+        {children}
+      </Text>
+    </View>
+  );
+};
 
 interface Survey {
   id: string;
   title: string;
-  description: string;
-  typeform_id: string;
-  reward_points: number;
-  reward_amount: number;
-  status: string;
+  description: string | null;
+  typeform_id: string | null;
+  reward_points: number | null;
+  reward_amount: number | null;
+  status: string | null;
 }
 
 interface Task {
   id: string;
   title: string;
-  description: string;
-  reward_points: number;
-  reward_amount: number;
-  status: string;
+  description: string | null;
+  reward_points: number | null;
+  reward_amount: number | null;
+  status: string | null;
 }
 
 interface UserProfile {
@@ -351,10 +170,60 @@ interface UserProfile {
   user_id: string;
   first_name: string | null;
   last_name: string | null;
-  role: string;
-  kyc_status: string;
-  total_earnings: number;
+  role: string | null;
+  kyc_status: string | null;
+  total_earnings: number | null;
   created_at: string;
+}
+
+interface KYCSubmission {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  address: string;
+  phone_number: string;
+  city: string;
+  country: string;
+  postal_code: string;
+  rejection_reason?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  created_at: string;
+  profiles: {
+    kyc_status: string;
+  };
+  kyc_documents: Array<{
+    id: string;
+    document_type: string;
+    file_url: string;
+  }>;
+}
+
+interface KYCSubmission {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  address: string;
+  phone_number: string;
+  city: string;
+  country: string;
+  postal_code: string;
+  rejection_reason?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  created_at: string;
+  profiles: {
+    kyc_status: string;
+  };
+  kyc_documents: Array<{
+    id: string;
+    document_type: string;
+    file_url: string;
+  }>;
 }
 
 interface ReportData {
@@ -385,6 +254,30 @@ interface ReportData {
     points: number;
     created_at: string;
   }>;
+  earningsBreakdown: {
+    totalTransactions: number;
+    positiveTransactions: number;
+    negativeTransactions: number;
+    zeroTransactions: number;
+    transactionTypes: Array<{
+      type: string;
+      count: number;
+      totalPoints: number;
+      avgPoints: number;
+    }>;
+    topTransactions: Array<{
+      id: string;
+      user_name: string;
+      type: string;
+      points: number;
+      amount: number;
+      created_at: string;
+    }>;
+    dateRange: {
+      earliest: string;
+      latest: string;
+    };
+  };
 }
 
 export default function Admin() {
@@ -394,8 +287,10 @@ export default function Admin() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [kycSubmissions, setKycSubmissions] = useState<KYCSubmission[]>([]);
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('reports');
 
   // Survey form state
   const [surveyForm, setSurveyForm] = useState({
@@ -414,47 +309,18 @@ export default function Admin() {
     reward_amount: 0
   });
 
+  // KYC form state
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [selectedKYCSubmission, setSelectedKYCSubmission] = useState<KYCSubmission | null>(null);
+
   useEffect(() => {
-    // Functions are called here
     checkAdminRole();
     fetchSurveys();
     fetchTasks();
     fetchUsers();
+    fetchKYCSubmissions();
     fetchReportData();
-
-    // Listen for real-time updates to refresh data
-    const channel = supabase
-      .channel('admin-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: 'kyc_status=neq.null'
-        },
-        () => {
-          fetchUsers();
-          fetchReportData();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'kyc_submissions'
-        },
-        () => {
-          fetchReportData();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]); // Depend on `user` for initial data fetch and role check
+  }, [user]);
 
   const checkAdminRole = async () => {
     if (!user) {
@@ -463,94 +329,129 @@ export default function Admin() {
       return;
     }
     
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('user_id', user.id)
-      .single();
-    
-    setIsAdmin(profile?.role === 'admin');
-    setLoading(false);
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+      
+      setIsAdmin(profile?.role === 'admin');
+    } catch (error) {
+      console.error('Error checking admin role:', error);
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchSurveys = async () => {
-    const { data } = await supabase
-      .from('surveys')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (data) setSurveys(data);
+    try {
+      const { data } = await supabase
+        .from('surveys')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (data) setSurveys(data);
+    } catch (error) {
+      console.error('Error fetching surveys:', error);
+    }
   };
 
   const fetchTasks = async () => {
-    const { data } = await supabase
-      .from('tasks')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (data) setTasks(data);
+    try {
+      const { data } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (data) setTasks(data);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    }
   };
 
   const fetchUsers = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (data) setUsers(data);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (data) setUsers(data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
   };
 
-  const updateUserRole = async (userId: string, newRole: string) => {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('user_id', userId);
+  const fetchKYCSubmissions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('kyc_submissions')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    } else {
-      toast({
-        title: "Success",
-        description: `User role updated to ${newRole}`
-      });
-      fetchUsers();
+      if (error) throw error;
+
+      // Fetch profiles and documents separately for each submission
+      const submissionsWithData = await Promise.all(
+        (data || []).map(async (submission: any) => {
+          // Fetch profile KYC status
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('kyc_status')
+            .eq('user_id', submission.user_id)
+            .maybeSingle();
+
+          // Fetch associated documents
+          const { data: documents } = await supabase
+            .from('kyc_documents')
+            .select('*')
+            .eq('user_id', submission.user_id);
+          
+          return {
+            ...submission,
+            profiles: { kyc_status: profile?.kyc_status || 'pending' },
+            kyc_documents: documents || []
+          };
+        })
+      );
+
+      setKycSubmissions(submissionsWithData as any);
+    } catch (error: any) {
+      console.error('KYC fetch error:', error);
     }
   };
 
   const fetchReportData = async () => {
     try {
-      // Get current date and first day of month
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      // Fetch all necessary data in parallel
       const [
         usersData,
         tasksData,
         surveysData,
         userTasksData,
         userSurveysData,
-        earningsData,
-        kycData
+        earningsData
       ] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('tasks').select('*'),
         supabase.from('surveys').select('*'),
         supabase.from('user_tasks').select('*'),
         supabase.from('user_surveys').select('*'),
-        supabase.from('earnings_transactions').select('*'),
-        supabase.from('kyc_submissions').select('*')
+        supabase.from('earnings_transactions').select('*')
       ]);
 
-      // Calculate metrics
       const totalUsers = usersData.data?.length || 0;
-      const newUsersThisMonth = usersData.data?.filter(u => 
-        new Date(u.created_at) >= firstDayOfMonth
-      ).length || 0;
+      const newUsersThisMonth = usersData.data?.filter(u => {
+        try {
+          return u.created_at && new Date(u.created_at) >= firstDayOfMonth;
+        } catch (error) {
+          return false;
+        }
+      }).length || 0;
 
       const totalTasks = tasksData.data?.length || 0;
       const completedTasks = userTasksData.data?.filter(ut => ut.status === 'completed').length || 0;
@@ -560,25 +461,62 @@ export default function Admin() {
 
       const totalPointsAwarded = earningsData.data?.reduce((sum, t) => sum + (t.points || 0), 0) || 0;
       const totalEarningsAwarded = earningsData.data?.reduce((sum, t) => sum + parseFloat(String(t.amount) || '0'), 0) || 0;
-      
-      // Alternative calculation from user profiles
-      const totalEarningsFromProfiles = usersData.data?.reduce((sum, u) => sum + parseFloat(String(u.total_earnings) || '0'), 0) || 0;
-      
-      console.log('Earnings Debug:', {
-        fromTransactions: totalEarningsAwarded,
-        fromProfiles: totalEarningsFromProfiles,
-        transactionsData: earningsData.data,
-        profilesData: usersData.data?.map(u => ({ name: `${u.first_name} ${u.last_name}`, earnings: u.total_earnings }))
+
+      // Detailed earnings breakdown
+      const earningsTransactions = earningsData.data || [];
+      const totalTransactions = earningsTransactions.length;
+      const positiveTransactions = earningsTransactions.filter(t => (t.points || 0) > 0).length;
+      const negativeTransactions = earningsTransactions.filter(t => (t.points || 0) < 0).length;
+      const zeroTransactions = earningsTransactions.filter(t => (t.points || 0) === 0).length;
+
+      // Group by transaction type
+      const transactionTypeMap = new Map<string, { count: number; totalPoints: number }>();
+      earningsTransactions.forEach(t => {
+        const type = t.transaction_type || 'unknown';
+        const points = t.points || 0;
+        const existing = transactionTypeMap.get(type) || { count: 0, totalPoints: 0 };
+        transactionTypeMap.set(type, {
+          count: existing.count + 1,
+          totalPoints: existing.totalPoints + points
+        });
       });
 
-      // Top users by earnings
+      const transactionTypes = Array.from(transactionTypeMap.entries()).map(([type, data]) => ({
+        type,
+        count: data.count,
+        totalPoints: data.totalPoints,
+        avgPoints: data.count > 0 ? data.totalPoints / data.count : 0
+      })).sort((a, b) => b.totalPoints - a.totalPoints);
+
+      // Top transactions by points (both positive and negative)
+      const topTransactions = earningsTransactions
+        .sort((a, b) => Math.abs(b.points || 0) - Math.abs(a.points || 0))
+        .slice(0, 10)
+        .map(t => {
+          const user = usersData.data?.find(u => u.user_id === t.user_id);
+          return {
+            id: t.id,
+            user_name: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Unknown User',
+            type: t.transaction_type,
+            points: t.points || 0,
+            amount: parseFloat(String(t.amount || '0')),
+            created_at: t.created_at
+          };
+        });
+
+      // Date range
+      const dates = earningsTransactions.map(t => new Date(t.created_at)).filter(d => !isNaN(d.getTime()));
+      const dateRange = {
+        earliest: dates.length > 0 ? new Date(Math.min(...dates.map(d => d.getTime()))).toISOString() : '',
+        latest: dates.length > 0 ? new Date(Math.max(...dates.map(d => d.getTime()))).toISOString() : ''
+      };
+
       const userEarnings = (usersData.data || []).map(user => ({
         name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User',
         points: earningsData.data?.filter(t => t.user_id === user.user_id).reduce((sum, t) => sum + (t.points || 0), 0) || 0,
         earnings: parseFloat(String(user.total_earnings || '0'))
       })).sort((a, b) => b.earnings - a.earnings).slice(0, 3);
 
-      // KYC stats - use profiles table for consistency
       const kycStats = {
         pending: usersData.data?.filter(u => u.kyc_status === 'pending').length || 0,
         verified: usersData.data?.filter(u => u.kyc_status === 'verified').length || 0,
@@ -586,15 +524,14 @@ export default function Admin() {
         not_started: usersData.data?.filter(u => !u.kyc_status || u.kyc_status === null).length || 0
       };
 
-      console.log('KYC Stats Debug:', {
-        totalProfiles: usersData.data?.length,
-        profiles: usersData.data?.map(u => ({ name: `${u.first_name} ${u.last_name}`, status: u.kyc_status })),
-        kycStats
-      });
-
-      // Recent transactions (last 10)
       const recentTransactions = (earningsData.data || [])
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .sort((a, b) => {
+          try {
+            return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+          } catch (error) {
+            return 0;
+          }
+        })
         .slice(0, 10)
         .map(t => {
           const user = usersData.data?.find(u => u.user_id === t.user_id);
@@ -609,672 +546,869 @@ export default function Admin() {
 
       setReportData({
         totalUsers,
-        activeUsers: totalUsers, // For now, consider all users as active
+        activeUsers: totalUsers,
         newUsersThisMonth,
         totalTasks,
         completedTasks,
         totalSurveys,
         completedSurveys,
         totalPointsAwarded,
-        totalEarningsAwarded, // Use transactions total (correct value)
+        totalEarningsAwarded,
         topUsersByPoints: userEarnings,
         kycStats,
-        recentTransactions
+        recentTransactions,
+        earningsBreakdown: {
+          totalTransactions,
+          positiveTransactions,
+          negativeTransactions,
+          zeroTransactions,
+          transactionTypes,
+          topTransactions,
+          dateRange
+        }
       });
     } catch (error) {
       console.error('Error fetching report data:', error);
     }
   };
 
-  const createSurvey = async () => { // Removed 'e: React.FormEvent'
-    const { error } = await supabase
-      .from('surveys')
-      .insert([surveyForm]);
-    
-    if (error) {
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('user_id', userId);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `User role updated to ${newRole}`
+        });
+        fetchUsers();
+      }
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: "Failed to update user role",
         variant: "destructive"
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Survey created successfully"
-      });
-      setSurveyForm({
-        title: '',
-        description: '',
-        typeform_id: '',
-        reward_points: 0,
-        reward_amount: 0
-      });
-      fetchSurveys();
     }
   };
 
-  const createTask = async () => { // Removed 'e: React.FormEvent'
-    const { error } = await supabase
-      .from('tasks')
-      .insert([taskForm]);
-    
-    if (error) {
+  const createSurvey = async () => {
+    try {
+      const { error } = await supabase
+        .from('surveys')
+        .insert([surveyForm]);
+      
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Survey created successfully"
+        });
+        setSurveyForm({
+          title: '',
+          description: '',
+          typeform_id: '',
+          reward_points: 0,
+          reward_amount: 0
+        });
+        fetchSurveys();
+      }
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: "Failed to create survey",
         variant: "destructive"
       });
-    } else {
+    }
+  };
+
+  const createTask = async () => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .insert([taskForm]);
+      
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Task created successfully"
+        });
+        setTaskForm({
+          title: '',
+          description: '',
+          reward_points: 0,
+          reward_amount: 0
+        });
+        fetchTasks();
+      }
+    } catch (error) {
       toast({
-        title: "Success",
-        description: "Task created successfully"
+        title: "Error",
+        description: "Failed to create task",
+        variant: "destructive"
       });
-      setTaskForm({
-        title: '',
-        description: '',
-        reward_points: 0,
-        reward_amount: 0
+    }
+  };
+
+
+
+  const approveKYC = async (submissionId: string) => {
+    try {
+      const submission = kycSubmissions.find(s => s.id === submissionId);
+      if (!submission) return;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          kyc_status: 'verified',
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', submission.user_id);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "KYC approved successfully"
+        });
+        fetchKYCSubmissions();
+        fetchReportData();
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve KYC",
+        variant: "destructive"
       });
-      fetchTasks();
+    }
+  };
+
+  const rejectKYC = async (submissionId: string) => {
+    try {
+      const submission = kycSubmissions.find(s => s.id === submissionId);
+      if (!submission) return;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          kyc_status: 'rejected',
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', submission.user_id);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "KYC rejected"
+        });
+        setRejectionReason('');
+        setSelectedKYCSubmission(null);
+        fetchKYCSubmissions();
+        fetchReportData();
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject KYC",
+        variant: "destructive"
+      });
     }
   };
 
   if (loading || isAdmin === null) {
     return (
-      <StyledView className="flex-1 justify-center items-center bg-gray-100">
-        <ActivityIndicator size="large" color="#0000ff" />
-        <StyledText className="text-xl font-bold mt-4">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={{ fontSize: 18, fontWeight: 'bold', marginTop: 16 }}>
           Loading...
-        </StyledText>
-      </StyledView>
+        </Text>
+      </View>
     );
   }
 
   if (!isAdmin) {
-    // In React Native, you would typically navigate away using React Navigation
-    // For example: navigation.navigate('Home');
-    // For this conversion, we'll just show a message.
     return (
-      <StyledView className="flex-1 justify-center items-center bg-gray-100">
-        <StyledText className="text-xl font-bold text-red-600">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FF3B30' }}>
           Access Denied. You are not an administrator.
-        </StyledText>
-      </StyledView>
+        </Text>
+      </View>
     );
   }
 
+  const renderTabButton = (tabName: string, title: string, icon: string) => (
+    <TouchableOpacity
+      style={{
+        flex: 1,
+        padding: 12,
+        borderRadius: 8,
+        marginHorizontal: 4,
+        backgroundColor: activeTab === tabName ? '#007AFF' : '#E5E5EA',
+        alignItems: 'center',
+      }}
+      onPress={() => setActiveTab(tabName)}
+    >
+      <Icon 
+        name={icon} 
+        size={16} 
+        color={activeTab === tabName ? '#fff' : '#666'} 
+      />
+      <Text style={{
+        fontSize: 12,
+        fontWeight: '600',
+        color: activeTab === tabName ? '#fff' : '#666',
+        marginTop: 4,
+      }}>
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
-    <ScrollView className="flex-1 bg-gray-100 p-6"> {/* Use ScrollView for scrollable content */}
-      <StyledView className="max-w-6xl mx-auto space-y-8 pb-8"> {/* Added padding bottom */}
-        <StyledView className="text-center">
-          <StyledText className="text-2xl font-bold text-gray-900 mb-2"> {/* Removed gradient-text */}
+    <ScrollView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+      <View style={{ padding: 16 }}>
+        <View style={{ alignItems: 'center', marginBottom: 24 }}>
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 8 }}>
             Admin Dashboard
-          </StyledText>
-          <StyledText className="text-sm text-gray-500">
+          </Text>
+          <Text style={{ fontSize: 16, color: '#666' }}>
             Manage surveys, tasks, and user rewards
-          </StyledText>
-        </StyledView>
+          </Text>
+        </View>
 
-        <Tabs defaultValue="reports" className="space-y-6">
-          <TabsList className="grid-cols-5"> {/* Nativewind `grid-cols-5` might work if set up, or adjust flex-row */}
-            <TabsTrigger value="reports">
-              <BarChart3 className="h-4 w-4 mr-2 text-gray-700" />
-              <StyledText className="text-gray-700 text-sm">Reports</StyledText>
-            </TabsTrigger>
-            <TabsTrigger value="surveys">
-              <FileText className="h-4 w-4 mr-2 text-gray-700" />
-              <StyledText className="text-gray-700 text-sm">Surveys</StyledText>
-            </TabsTrigger>
-            <TabsTrigger value="tasks">
-              <Award className="h-4 w-4 mr-2 text-gray-700" />
-              <StyledText className="text-gray-700 text-sm">Tasks</StyledText>
-            </TabsTrigger>
-            <TabsTrigger value="kyc">
-              <Shield className="h-4 w-4 mr-2 text-gray-700" />
-              <StyledText className="text-gray-700 text-sm">KYC</StyledText>
-            </TabsTrigger>
-            <TabsTrigger value="users">
-              <Users className="h-4 w-4 mr-2 text-gray-700" />
-              <StyledText className="text-gray-700 text-sm">Users</StyledText>
-            </TabsTrigger>
-          </TabsList>
+        {/* Tab Navigation */}
+        <View style={{ 
+          flexDirection: 'row', 
+          backgroundColor: '#fff', 
+          borderRadius: 12, 
+          padding: 4, 
+          marginBottom: 24,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          elevation: 3,
+        }}>
+          {renderTabButton('reports', 'Reports', 'bar-chart')}
+          {renderTabButton('surveys', 'Surveys', 'document-text')}
+          {renderTabButton('tasks', 'Tasks', 'trophy')}
+          {renderTabButton('kyc', 'KYC', 'shield')}
+          {renderTabButton('users', 'Users', 'people')}
+          {/* {renderTabButton('config', 'Config', 'settings')} */}
+        </View>
 
-          <TabsContent value="reports" className="space-y-6">
-            {reportData ? (
-              <>
-                {/* Overview Stats */}
-                <StyledView className="flex-col md:flex-row gap-6"> {/* Simplified grid to flex-col */}
-                  <Card className="flex-1"> {/* Removed glass-card */}
-                    <CardContent className="p-6">
-                      <StyledView className="flex-row items-center justify-between">
-                        <StyledView>
-                          <StyledText className="text-sm font-medium text-gray-500">Total Users</StyledText>
-                          <StyledText className="text-3xl font-bold text-gray-900">{reportData.totalUsers}</StyledText>
-                        </StyledView>
-                        <Users className="h-8 w-8 text-blue-500" />
-                      </StyledView>
-                      <StyledText className="text-xs text-gray-500 mt-2">
-                        +{reportData.newUsersThisMonth} this month
-                      </StyledText>
-                    </CardContent>
-                  </Card>
+        {/* Reports Tab */}
+        {activeTab === 'reports' && reportData && (
+          <View>
+            {/* Overview Stats */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 24 }}>
+              <Card style={{ width: '48%', marginBottom: 16 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Icon name="people" size={24} color="#007AFF" />
+                  <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
+                    {reportData.totalUsers}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#666', textAlign: 'center' }}>
+                    Total Users
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#007AFF' }}>
+                    +{reportData.newUsersThisMonth} this month
+                  </Text>
+                </View>
+              </Card>
 
-                  <Card className="flex-1">
-                    <CardContent className="p-6">
-                      <StyledView className="flex-row items-center justify-between">
-                        <StyledView>
-                          <StyledText className="text-sm font-medium text-gray-500">Total Tasks</StyledText>
-                          <StyledText className="text-3xl font-bold text-gray-900">{reportData.totalTasks}</StyledText>
-                        </StyledView>
-                        <Award className="h-8 w-8 text-blue-500" />
-                      </StyledView>
-                      <StyledText className="text-xs text-gray-500 mt-2">
-                        {reportData.completedTasks} completed
-                      </StyledText>
-                    </CardContent>
-                  </Card>
+              <Card style={{ width: '48%', marginBottom: 16 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Icon name="trophy" size={24} color="#007AFF" />
+                  <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
+                    {reportData.totalTasks}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#666', textAlign: 'center' }}>
+                    Total Tasks
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#007AFF' }}>
+                    {reportData.completedTasks} completed
+                  </Text>
+                </View>
+              </Card>
 
-                  <Card className="flex-1">
-                    <CardContent className="p-6">
-                      <StyledView className="flex-row items-center justify-between">
-                        <StyledView>
-                          <StyledText className="text-sm font-medium text-gray-500">Total Surveys</StyledText>
-                          <StyledText className="text-3xl font-bold text-gray-900">{reportData.totalSurveys}</StyledText>
-                        </StyledView>
-                        <FileText className="h-8 w-8 text-blue-500" />
-                      </StyledView>
-                      <StyledText className="text-xs text-gray-500 mt-2">
-                        {reportData.completedSurveys} completed
-                      </StyledText>
-                    </CardContent>
-                  </Card>
+              <Card style={{ width: '48%', marginBottom: 16 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Icon name="document-text" size={24} color="#007AFF" />
+                  <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
+                    {reportData.totalSurveys}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#666', textAlign: 'center' }}>
+                    Total Surveys
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#007AFF' }}>
+                    {reportData.completedSurveys} completed
+                  </Text>
+                </View>
+              </Card>
 
-                  <Card className="flex-1">
-                    <CardContent className="p-6">
-                      <StyledView className="flex-row items-center justify-between">
-                        <StyledView>
-                          <StyledText className="text-sm font-medium text-gray-500">Total Earnings</StyledText>
-                          <StyledText className="text-3xl font-bold text-gray-900">${reportData.totalEarningsAwarded.toFixed(2)}</StyledText>
-                        </StyledView>
-                        <DollarSign className="h-8 w-8 text-blue-500" />
-                      </StyledView>
-                      <StyledText className="text-xs text-gray-500 mt-2">
-                        {reportData.totalPointsAwarded} points awarded
-                      </StyledText>
-                    </CardContent>
-                  </Card>
-                </StyledView>
+              <Card style={{ width: '48%', marginBottom: 16 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Icon name="star" size={24} color="#007AFF" />
+                  <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
+                    {reportData.totalPointsAwarded || 0}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#666', textAlign: 'center' }}>
+                    Total Points
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#007AFF' }}>
+                    {reportData.totalPointsAwarded} points awarded
+                  </Text>
+                </View>
+              </Card>
+            </View>
 
-                {/* Detailed Analytics */}
-                <StyledView className="flex-col lg:flex-row gap-6">
-                  {/* Top Users */}
-                  <Card className="flex-1"> {/* Removed glass-card */}
-                    <CardHeader>
-                      <CardTitle className="flex-row items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-gray-700" />
-                        <StyledText>Top Users by Earnings</StyledText>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <StyledView className="space-y-4">
-                        {reportData.topUsersByPoints.map((user, index) => (
-                          <StyledView key={index} className="flex-row items-center justify-between p-3 rounded-lg bg-gray-100">
-                            <StyledView className="flex-row items-center gap-3">
-                              <StyledView className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                <StyledText className="text-sm font-bold text-blue-700">#{index + 1}</StyledText>
-                              </StyledView>
-                              <StyledView>
-                                <StyledText className="font-medium text-gray-800">{user.name}</StyledText>
-                                <StyledText className="text-sm text-gray-500">{user.points} points</StyledText>
-                              </StyledView>
-                            </StyledView>
-                            <StyledView className="text-right">
-                              <StyledText className="font-bold text-gray-800">${user.earnings.toFixed(2)}</StyledText>
-                            </StyledView>
-                          </StyledView>
-                        ))}
-                      </StyledView>
-                    </CardContent>
-                  </Card>
-
-                  {/* KYC Statistics */}
-                  <Card className="flex-1"> {/* Removed glass-card */}
-                    <CardHeader>
-                      <CardTitle className="flex-row items-center gap-2">
-                        <Shield className="h-5 w-5 text-gray-700" />
-                        <StyledText>KYC Statistics</StyledText>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <StyledView className="space-y-4">
-                        <StyledView className="flex-row items-center justify-between p-3 rounded-lg bg-green-50">
-                          <StyledView className="flex-row items-center gap-3">
-                            <StyledView className="w-3 h-3 rounded-full bg-green-500"></StyledView>
-                            <StyledText>Verified</StyledText>
-                          </StyledView>
-                          <StyledText className="font-bold">{reportData.kycStats.verified}</StyledText>
-                        </StyledView>
-                        <StyledView className="flex-row items-center justify-between p-3 rounded-lg bg-yellow-50">
-                          <StyledView className="flex-row items-center gap-3">
-                            <StyledView className="w-3 h-3 rounded-full bg-yellow-500"></StyledView>
-                            <StyledText>Pending</StyledText>
-                          </StyledView>
-                          <StyledText className="font-bold">{reportData.kycStats.pending}</StyledText>
-                        </StyledView>
-                        <StyledView className="flex-row items-center justify-between p-3 rounded-lg bg-red-50">
-                          <StyledView className="flex-row items-center gap-3">
-                            <StyledView className="w-3 h-3 rounded-full bg-red-500"></StyledView>
-                            <StyledText>Rejected</StyledText>
-                          </StyledView>
-                          <StyledText className="font-bold">{reportData.kycStats.rejected}</StyledText>
-                        </StyledView>
-                        <StyledView className="flex-row items-center justify-between p-3 rounded-lg bg-gray-50">
-                          <StyledView className="flex-row items-center gap-3">
-                            <StyledView className="w-3 h-3 rounded-full bg-gray-500"></StyledView>
-                            <StyledText>Not Started</StyledText>
-                          </StyledView>
-                          <StyledText className="font-bold">{reportData.kycStats.not_started}</StyledText>
-                        </StyledView>
-                      </StyledView>
-                    </CardContent>
-                  </Card>
-                </StyledView>
-
-                {/* Recent Activity */}
-                <Card className=""> {/* Removed glass-card */}
-                  <CardHeader>
-                    <CardTitle className="flex-row items-center gap-2">
-                      <Clock className="h-5 w-5 text-gray-700" />
-                      <StyledText>Recent Transactions</StyledText>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead><StyledText>User</StyledText></TableHead>
-                          <TableHead><StyledText>Type</StyledText></TableHead>
-                          <TableHead><StyledText>Amount</StyledText></TableHead>
-                          <TableHead><StyledText>Points</StyledText></TableHead>
-                          <TableHead><StyledText>Date</StyledText></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData.recentTransactions.map((transaction, index) => (
-                          <TableRow key={index}>
-                            <TableCell className="font-medium">
-                              <StyledText className="font-medium text-gray-800">{transaction.user_name}</StyledText>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="capitalize">
-                                {transaction.type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell><StyledText>${transaction.amount.toFixed(2)}</StyledText></TableCell>
-                            <TableCell><StyledText>{transaction.points}</StyledText></TableCell>
-                            <TableCell>
-                              <StyledText>
-                                {new Date(transaction.created_at).toLocaleDateString()}
-                              </StyledText>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-
-                {/* Completion Rates */}
-                <StyledView className="flex-col md:flex-row gap-6">
-                  <Card className="flex-1"> {/* Removed glass-card */}
-                    <CardHeader>
-                      <CardTitle><StyledText>Task Completion Rate</StyledText></CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <StyledView className="space-y-2">
-                        <StyledView className="flex-row justify-between text-sm">
-                          <StyledText>Completed</StyledText>
-                          <StyledText>{reportData.completedTasks}/{reportData.totalTasks}</StyledText>
-                        </StyledView>
-                        <StyledView className="w-full bg-gray-200 rounded-full h-2"> {/* Removed bg-muted */}
-                          <StyledView 
-                            className="bg-blue-500 h-2 rounded-full transition-all duration-300" // Removed bg-primary
-                            style={{
-                              width: `${reportData.totalTasks > 0 ? (reportData.completedTasks / reportData.totalTasks) * 100 : 0}%`
-                            }}
-                          ></StyledView>
-                        </StyledView>
-                        <StyledText className="text-xs text-gray-500"> {/* Removed text-muted-foreground */}
-                          {reportData.totalTasks > 0 ? ((reportData.completedTasks / reportData.totalTasks) * 100).toFixed(1) : 0}% completion rate
-                        </StyledText>
-                      </StyledView>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="flex-1"> {/* Removed glass-card */}
-                    <CardHeader>
-                      <CardTitle><StyledText>Survey Completion Rate</StyledText></CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <StyledView className="space-y-2">
-                        <StyledView className="flex-row justify-between text-sm">
-                          <StyledText>Completed</StyledText>
-                          <StyledText>{reportData.completedSurveys}/{reportData.totalSurveys}</StyledText>
-                        </StyledView>
-                        <StyledView className="w-full bg-gray-200 rounded-full h-2"> {/* Removed bg-muted */}
-                          <StyledView 
-                            className="bg-blue-500 h-2 rounded-full transition-all duration-300" // Removed bg-primary
-                            style={{
-                              width: `${reportData.totalSurveys > 0 ? (reportData.completedSurveys / reportData.totalSurveys) * 100 : 0}%`
-                            }}
-                          ></StyledView>
-                        </StyledView>
-                        <StyledText className="text-xs text-gray-500"> {/* Removed text-muted-foreground */}
-                          {reportData.totalSurveys > 0 ? ((reportData.completedSurveys / reportData.totalSurveys) * 100).toFixed(1) : 0}% completion rate
-                        </StyledText>
-                      </StyledView>
-                    </CardContent>
-                  </Card>
-                </StyledView>
-              </>
-            ) : (
-              <StyledView className="flex items-center justify-center h-64">
-                <ActivityIndicator size="large" color="#0000ff" />
-                <StyledText className="text-gray-600 mt-4">Loading reports...</StyledText>
-              </StyledView>
-            )}
-          </TabsContent>
-
-          <TabsContent value="surveys" className="space-y-6">
-            {/* Create Survey Form */}
-            <Card className=""> {/* Removed glass-card */}
-              <CardHeader>
-                <CardTitle className="flex-row items-center gap-2">
-                  <Plus className="h-5 w-5 text-gray-700" />
-                  <StyledText>Add New Survey</StyledText>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <StyledView className="space-y-4"> {/* Replaced form with StyledView */}
-                  <StyledView className="flex-col md:flex-row gap-4"> {/* Simplified grid to flex-col */}
-                    <StyledView className="flex-1 space-y-2">
-                      <Label htmlFor="survey-title">Survey Title</Label>
-                      <Input
-                        id="survey-title"
-                        value={surveyForm.title}
-                        onChangeText={(text) => setSurveyForm({...surveyForm, title: text})}
-                        placeholder="Enter survey title"
-                        required
-                      />
-                    </StyledView>
-                    <StyledView className="flex-1 space-y-2">
-                      <Label htmlFor="typeform-id">Typeform ID</Label>
-                      <Input
-                        id="typeform-id"
-                        value={surveyForm.typeform_id}
-                        onChangeText={(text) => setSurveyForm({...surveyForm, typeform_id: text})}
-                        placeholder="Enter Typeform ID"
-                        required
-                      />
-                    </StyledView>
-                  </StyledView>
-                  <StyledView className="space-y-2">
-                    <Label htmlFor="survey-description">Description</Label>
-                    <Textarea
-                      id="survey-description"
-                      value={surveyForm.description}
-                      onChangeText={(text) => setSurveyForm({...surveyForm, description: text})}
-                      placeholder="Enter survey description"
-                    />
-                  </StyledView>
-                  <StyledView className="flex-col md:flex-row gap-4"> {/* Simplified grid to flex-col */}
-                    <StyledView className="flex-1 space-y-2">
-                      <Label htmlFor="survey-points">Reward Points</Label>
-                      <Input
-                        id="survey-points"
-                        keyboardType="number-pad"
-                        value={surveyForm.reward_points}
-                        onChangeText={(text) => setSurveyForm({...surveyForm, reward_points: parseInt(text || '0')})}
-                        placeholder="0"
-                      />
-                    </StyledView>
-                    <StyledView className="flex-1 space-y-2">
-                      <Label htmlFor="survey-amount">Reward Amount ($)</Label>
-                      <Input
-                        id="survey-amount"
-                        keyboardType="decimal-pad"
-                        step="0.01" // This prop is not directly supported by RN TextInput for validation. It's for web.
-                        value={surveyForm.reward_amount}
-                        onChangeText={(text) => setSurveyForm({...surveyForm, reward_amount: parseFloat(text || '0')})}
-                        placeholder="0.00"
-                      />
-                    </StyledView>
-                  </StyledView>
-                  <Button onPress={createSurvey} className="w-full">
-                    <StyledText className="text-white text-base font-semibold">Create Survey</StyledText>
-                  </Button>
-                </StyledView>
-              </CardContent>
+            {/* KYC Statistics */}
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                KYC Statistics
+              </Text>
+              <View style={{ gap: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#34C759', marginRight: 8 }} />
+                    <Text>Verified</Text>
+                  </View>
+                  <Text style={{ fontWeight: 'bold' }}>{reportData.kycStats.verified}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#FF9500', marginRight: 8 }} />
+                    <Text>Pending</Text>
+                  </View>
+                  <Text style={{ fontWeight: 'bold' }}>{reportData.kycStats.pending}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#FF3B30', marginRight: 8 }} />
+                    <Text>Rejected</Text>
+                  </View>
+                  <Text style={{ fontWeight: 'bold' }}>{reportData.kycStats.rejected}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#8E8E93', marginRight: 8 }} />
+                    <Text>Not Started</Text>
+                  </View>
+                  <Text style={{ fontWeight: 'bold' }}>{reportData.kycStats.not_started}</Text>
+                </View>
+              </View>
             </Card>
 
-            {/* Existing Surveys */}
-            <StyledView className="gap-4">
-              <StyledText className="text-lg font-semibold text-gray-800">Existing Surveys</StyledText>
-              {surveys.map((survey) => (
-                <Card key={survey.id} className=""> {/* Removed glass-card */}
-                  <CardContent className="p-4">
-                    <StyledView className="flex-row justify-between items-start">
-                      <StyledView className="space-y-2 flex-1">
-                        <StyledText className="font-semibold text-gray-800">{survey.title}</StyledText>
-                        <StyledText className="text-sm text-gray-500">{survey.description}</StyledText>
-                        <StyledView className="flex-row gap-4 text-sm">
-                          <StyledText>Points: {survey.reward_points}</StyledText>
-                          <StyledText>Amount: ${survey.reward_amount.toFixed(2)}</StyledText>
-                          <StyledText className="capitalize">Status: {survey.status}</StyledText>
-                        </StyledView>
-                      </StyledView>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onPress={() => Alert.alert("Open Typeform", `Open survey with ID: ${survey.typeform_id}`)}
-                        // For a real app, use Linking.openURL
-                        // onPress={() => Linking.openURL(`https://form.typeform.com/to/${survey.typeform_id}`)}
-                      >
-                        <ExternalLink className="h-4 w-4 text-gray-700" />
-                      </Button>
-                    </StyledView>
-                  </CardContent>
-                </Card>
+            {/* Top Users */}
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                Top Users by Earnings
+              </Text>
+              {reportData.topUsersByPoints.map((user, index) => (
+                <View key={index} style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  paddingVertical: 8,
+                  borderBottomWidth: index < reportData.topUsersByPoints.length - 1 ? 1 : 0,
+                  borderBottomColor: '#E5E5EA',
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ 
+                      width: 24, 
+                      height: 24, 
+                      borderRadius: 12, 
+                      backgroundColor: '#007AFF', 
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 12,
+                    }}>
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                        #{index + 1}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={{ fontWeight: '600' }}>{user.name}</Text>
+                      <Text style={{ fontSize: 12, color: '#666' }}>{user.points} points</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontWeight: 'bold' }}>{user.points} pts</Text>
+                </View>
               ))}
-            </StyledView>
-          </TabsContent>
+            </Card>
 
-          <TabsContent value="tasks" className="space-y-6">
-            {/* Create Task Form */}
-            <Card className=""> {/* Removed glass-card */}
-              <CardHeader>
-                <CardTitle className="flex-row items-center gap-2">
-                  <Plus className="h-5 w-5 text-gray-700" />
-                  <StyledText>Add New Task</StyledText>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <StyledView className="space-y-4"> {/* Replaced form with StyledView */}
-                  <StyledView className="space-y-2">
-                    <Label htmlFor="task-title">Task Title</Label>
+            {/* Earnings Breakdown */}
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                Earnings Transaction Analysis
+              </Text>
+              
+              {/* Summary Stats */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 }}>
+                <View style={{ width: '48%', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 14, color: '#666' }}>Total Transactions</Text>
+                  <Text style={{ fontSize: 20, fontWeight: 'bold' }}>{reportData.earningsBreakdown.totalTransactions.toLocaleString()}</Text>
+                </View>
+                <View style={{ width: '48%', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 14, color: '#666' }}>Positive Transactions</Text>
+                  <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#34C759' }}>{reportData.earningsBreakdown.positiveTransactions.toLocaleString()}</Text>
+                </View>
+                <View style={{ width: '48%', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 14, color: '#666' }}>Negative Transactions</Text>
+                  <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#FF3B30' }}>{reportData.earningsBreakdown.negativeTransactions.toLocaleString()}</Text>
+                </View>
+                <View style={{ width: '48%', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 14, color: '#666' }}>Zero Transactions</Text>
+                  <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#8E8E93' }}>{reportData.earningsBreakdown.zeroTransactions.toLocaleString()}</Text>
+                </View>
+              </View>
+
+              {/* Date Range */}
+              <View style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 8 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Transaction Date Range</Text>
+                <Text style={{ fontSize: 12, color: '#666' }}>
+                  From: {reportData.earningsBreakdown.dateRange.earliest ? new Date(reportData.earningsBreakdown.dateRange.earliest).toLocaleDateString() : 'N/A'}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#666' }}>
+                  To: {reportData.earningsBreakdown.dateRange.latest ? new Date(reportData.earningsBreakdown.dateRange.latest).toLocaleDateString() : 'N/A'}
+                </Text>
+              </View>
+
+              {/* Transaction Types */}
+              <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 12 }}>Transaction Types Breakdown</Text>
+              {reportData.earningsBreakdown.transactionTypes.map((type, index) => (
+                <View key={index} style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  paddingVertical: 8,
+                  borderBottomWidth: index < reportData.earningsBreakdown.transactionTypes.length - 1 ? 1 : 0,
+                  borderBottomColor: '#E5E5EA',
+                }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600' }}>{type.type}</Text>
+                    <Text style={{ fontSize: 12, color: '#666' }}>{type.count.toLocaleString()} transactions</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontWeight: 'bold', color: type.totalPoints >= 0 ? '#34C759' : '#FF3B30' }}>
+                      {type.totalPoints.toLocaleString()} pts
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#666' }}>
+                      Avg: {type.avgPoints.toFixed(1)} pts
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+
+            {/* Top Transactions */}
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                Top Transactions by Points (Absolute Value)
+              </Text>
+              {reportData.earningsBreakdown.topTransactions.map((transaction, index) => (
+                <View key={index} style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  paddingVertical: 8,
+                  borderBottomWidth: index < reportData.earningsBreakdown.topTransactions.length - 1 ? 1 : 0,
+                  borderBottomColor: '#E5E5EA',
+                }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600' }}>{transaction.user_name}</Text>
+                    <Badge variant="secondary" style={{ marginTop: 4 }}>
+                      {transaction.type}
+                    </Badge>
+                    <Text style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+                      {new Date(transaction.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ 
+                      fontWeight: 'bold', 
+                      color: transaction.points >= 0 ? '#34C759' : '#FF3B30',
+                      fontSize: 16
+                    }}>
+                      {transaction.points.toLocaleString()} pts
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#666' }}>
+                      ${transaction.amount.toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+
+            {/* Recent Transactions */}
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                Recent Transactions
+              </Text>
+              {reportData.recentTransactions.map((transaction, index) => (
+                <View key={index} style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  paddingVertical: 8,
+                  borderBottomWidth: index < reportData.recentTransactions.length - 1 ? 1 : 0,
+                  borderBottomColor: '#E5E5EA',
+                }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600' }}>{transaction.user_name}</Text>
+                    <Badge variant="secondary" style={{ marginTop: 4 }}>
+                      {transaction.type}
+                    </Badge>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontWeight: 'bold' }}>{transaction.points} pts</Text>
+                    <Text style={{ fontSize: 12, color: '#666' }}>{transaction.type}</Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+          </View>
+        )}
+
+        {/* Surveys Tab */}
+        {activeTab === 'surveys' && (
+          <View>
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                Add New Survey
+              </Text>
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Survey Title</Text>
+                  <Input
+                    value={surveyForm.title}
+                    onChangeText={(text) => setSurveyForm({...surveyForm, title: text})}
+                    placeholder="Enter survey title"
+                  />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Description</Text>
+                  <Input
+                    value={surveyForm.description}
+                    onChangeText={(text) => setSurveyForm({...surveyForm, description: text})}
+                    placeholder="Enter survey description"
+                  />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Typeform ID</Text>
+                  <Input
+                    value={surveyForm.typeform_id}
+                    onChangeText={(text) => setSurveyForm({...surveyForm, typeform_id: text})}
+                    placeholder="Enter Typeform ID"
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Reward Points</Text>
                     <Input
-                      id="task-title"
-                      value={taskForm.title}
-                      onChangeText={(text) => setTaskForm({...taskForm, title: text})}
-                      placeholder="Enter task title"
-                      required
+                      keyboardType="numeric"
+                      value={surveyForm.reward_points}
+                      onChangeText={(text) => setSurveyForm({...surveyForm, reward_points: parseInt(text) || 0})}
+                      placeholder="0"
                     />
-                  </StyledView>
-                  <StyledView className="space-y-2">
-                    <Label htmlFor="task-description">Description</Label>
-                    <Textarea
-                      id="task-description"
-                      value={taskForm.description}
-                      onChangeText={(text) => setTaskForm({...taskForm, description: text})}
-                      placeholder="Enter task description"
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Reward Amount (pts)</Text>
+                    <Input
+                      keyboardType="decimal-pad"
+                      value={surveyForm.reward_amount}
+                      onChangeText={(text) => setSurveyForm({...surveyForm, reward_amount: parseFloat(text) || 0})}
+                      placeholder="0.00"
                     />
-                  </StyledView>
-                  <StyledView className="flex-col md:flex-row gap-4"> {/* Simplified grid to flex-col */}
-                    <StyledView className="flex-1 space-y-2">
-                      <Label htmlFor="task-points">Reward Points</Label>
-                      <Input
-                        id="task-points"
-                        keyboardType="number-pad"
-                        value={taskForm.reward_points}
-                        onChangeText={(text) => setTaskForm({...taskForm, reward_points: parseInt(text || '0')})}
-                        placeholder="0"
-                      />
-                    </StyledView>
-                    <StyledView className="flex-1 space-y-2">
-                      <Label htmlFor="task-amount">Reward Amount ($)</Label>
-                      <Input
-                        id="task-amount"
-                        keyboardType="decimal-pad"
-                        step="0.01" // Not directly supported by RN TextInput for validation
-                        value={taskForm.reward_amount}
-                        onChangeText={(text) => setTaskForm({...taskForm, reward_amount: parseFloat(text || '0')})}
-                        placeholder="0.00"
-                      />
-                    </StyledView>
-                  </StyledView>
-                  <Button onPress={createTask} className="w-full">
-                    <StyledText className="text-white text-base font-semibold">Create Task</StyledText>
-                  </Button>
-                </StyledView>
-              </CardContent>
+                  </View>
+                </View>
+                <Button onPress={createSurvey} style={{ marginTop: 8 }}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Create Survey</Text>
+                </Button>
+              </View>
             </Card>
 
-            {/* Existing Tasks */}
-            <StyledView className="gap-4">
-              <StyledText className="text-lg font-semibold text-gray-800">Existing Tasks</StyledText>
-              {tasks.map((task) => (
-                <Card key={task.id} className=""> {/* Removed glass-card */}
-                  <CardContent className="p-4">
-                    <StyledView className="space-y-2">
-                      <StyledText className="font-semibold text-gray-800">{task.title}</StyledText>
-                      <StyledText className="text-sm text-gray-500">{task.description}</StyledText>
-                      <StyledView className="flex-row gap-4 text-sm">
-                        <StyledText>Points: {task.reward_points}</StyledText>
-                        <StyledText>Amount: ${task.reward_amount.toFixed(2)}</StyledText>
-                        <StyledText className="capitalize">Status: {task.status}</StyledText>
-                      </StyledView>
-                    </StyledView>
-                  </CardContent>
-                </Card>
-              ))}
-            </StyledView>
-          </TabsContent>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+              Existing Surveys
+            </Text>
+            {(surveys || []).map((survey) => (
+              <Card key={survey.id}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+                  {survey.title || 'Untitled Survey'}
+                </Text>
+                <Text style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>
+                  {survey.description}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  <Text style={{ fontSize: 12, color: '#666' }}>Points: {survey.reward_points || 0}</Text>
+                  <Text style={{ fontSize: 12, color: '#666' }}>Amount: {(survey.reward_amount || 0).toFixed(0)} pts</Text>
+                  <Badge variant="outline">
+                    {survey.status || 'unknown'}
+                  </Badge>
+                </View>
+              </Card>
+            ))}
+          </View>
+        )}
 
-          <TabsContent value="kyc" className="space-y-6">
-            <KYCAdminPanel />
-          </TabsContent>
+        {/* Tasks Tab */}
+        {activeTab === 'tasks' && (
+          <View>
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                Add New Task
+              </Text>
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Task Title</Text>
+                  <Input
+                    value={taskForm.title}
+                    onChangeText={(text) => setTaskForm({...taskForm, title: text})}
+                    placeholder="Enter task title"
+                  />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Description</Text>
+                  <Input
+                    value={taskForm.description}
+                    onChangeText={(text) => setTaskForm({...taskForm, description: text})}
+                    placeholder="Enter task description"
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Reward Points</Text>
+                    <Input
+                      keyboardType="numeric"
+                      value={taskForm.reward_points}
+                      onChangeText={(text) => setTaskForm({...taskForm, reward_points: parseInt(text) || 0})}
+                      placeholder="0"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Reward Amount (pts)</Text>
+                    <Input
+                      keyboardType="decimal-pad"
+                      value={taskForm.reward_amount}
+                      onChangeText={(text) => setTaskForm({...taskForm, reward_amount: parseFloat(text) || 0})}
+                      placeholder="0.00"
+                    />
+                  </View>
+                </View>
+                <Button onPress={createTask} style={{ marginTop: 8 }}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Create Task</Text>
+                </Button>
+              </View>
+            </Card>
 
-          <TabsContent value="users" className="space-y-6">
-            <Card className=""> {/* Removed glass-card */}
-              <CardHeader>
-                <CardTitle className="flex-row items-center gap-2">
-                  <Users className="h-5 w-5 text-gray-700" />
-                  <StyledText>User Management</StyledText>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <StyledView className="space-y-4">
-                  <StyledView className="flex-row justify-between items-center">
-                    <StyledText className="text-sm text-gray-500">
-                      Total Users: {users.length}
-                    </StyledText>
-                  </StyledView>
-                  
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead><StyledText>Name</StyledText></TableHead>
-                        <TableHead><StyledText>Role</StyledText></TableHead>
-                        <TableHead><StyledText>KYC Status</StyledText></TableHead>
-                        <TableHead><StyledText>Total Earnings</StyledText></TableHead>
-                        <TableHead><StyledText>Joined</StyledText></TableHead>
-                        <TableHead><StyledText>Actions</StyledText></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell>
-                            <StyledView>
-                              <StyledText className="font-medium text-gray-800">
-                                {user.first_name || user.last_name 
-                                  ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
-                                  : 'No name set'
-                                }
-                              </StyledText>
-                              <StyledText className="text-sm text-gray-500">
-                                {user.user_id}
-                              </StyledText>
-                            </StyledView>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                              {user.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={
-                                user.kyc_status === 'verified' ? 'default' :
-                                user.kyc_status === 'pending' ? 'secondary' :
-                                user.kyc_status === 'rejected' ? 'destructive' : 'outline'
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+              Existing Tasks
+            </Text>
+            {(tasks || []).map((task) => (
+              <Card key={task.id}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+                  {task.title || 'Untitled Task'}
+                </Text>
+                <Text style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>
+                  {task.description}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  <Text style={{ fontSize: 12, color: '#666' }}>Points: {task.reward_points || 0}</Text>
+                  <Text style={{ fontSize: 12, color: '#666' }}>Amount: {(task.reward_amount || 0).toFixed(0)} pts</Text>
+                  <Badge variant="outline">
+                    {task.status || 'unknown'}
+                  </Badge>
+                </View>
+              </Card>
+            ))}
+          </View>
+        )}
+
+        {/* KYC Tab */}
+        {activeTab === 'kyc' && (
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+              KYC Submissions
+            </Text>
+            {(kycSubmissions || []).map((submission) => (
+              <Card key={submission.id}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>
+                      {submission.first_name} {submission.last_name}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 2 }}>
+                      {submission.phone_number}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 2 }}>
+                      {submission.phone_number}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#666' }}>
+                      {submission.address}, {submission.city}, {submission.country}
+                    </Text>
+                  </View>
+                  <Badge 
+                    variant={
+                      submission.profiles.kyc_status === 'verified' ? 'default' :
+                      submission.profiles.kyc_status === 'pending' ? 'secondary' :
+                      submission.profiles.kyc_status === 'rejected' ? 'destructive' : 'outline'
+                    }
+                  >
+                    {submission.profiles.kyc_status || 'pending'}
+                  </Badge>
+                </View>
+                
+                {submission.profiles.kyc_status === 'pending' && (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onPress={() => approveKYC(submission.id)}
+                      style={{ flex: 1 }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Approve</Text>
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      onPress={() => rejectKYC(submission.id)}
+                      style={{ flex: 1 }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Reject</Text>
+                    </Button>
+                  </View>
+                )}
+              </Card>
+            ))}
+          </View>
+        )}
+
+        {/* Users Tab */}
+        {activeTab === 'users' && (
+          <View>
+            <Card>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
+                User Management
+              </Text>
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+                Total Users: {users.length}
+              </Text>
+              
+              {(users || []).map((user) => (
+                <View key={user.id} style={{ 
+                  borderBottomWidth: 1, 
+                  borderBottomColor: '#E5E5EA', 
+                  paddingVertical: 12,
+                }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 4 }}>
+                        {user.first_name || user.last_name 
+                          ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+                          : 'No name set'
+                        }
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+                        {user.user_id || 'No ID'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+                        <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                          {user.role}
+                        </Badge>
+                        <Badge 
+                          variant={
+                            user.kyc_status === 'verified' ? 'default' :
+                            user.kyc_status === 'pending' ? 'secondary' :
+                            user.kyc_status === 'rejected' ? 'destructive' : 'outline'
+                          }
+                        >
+                          {user.kyc_status || 'not_started'}
+                        </Badge>
+                      </View>
+                      <Text style={{ fontSize: 12, color: '#666' }}>
+                        Points: {(user.total_earnings || 0).toFixed(0)} pts
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {user.role !== 'admin' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onPress={() => {
+                            try {
+                              if (user.user_id) {
+                                updateUserRole(user.user_id, 'admin');
                               }
-                            >
-                              {user.kyc_status || 'not_started'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <StyledText>${user.total_earnings?.toFixed(2) || '0.00'}</StyledText>
-                          </TableCell>
-                          <TableCell>
-                            <StyledText>
-                              {new Date(user.created_at).toLocaleDateString()}
-                            </StyledText>
-                          </TableCell>
-                          <TableCell>
-                            <StyledView className="flex-row gap-2">
-                              {user.role !== 'admin' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onPress={() => updateUserRole(user.user_id, 'admin')}
-                                >
-                                  <UserCheck className="h-4 w-4 mr-1 text-gray-700" />
-                                  <StyledText className="text-gray-700 text-sm">Make Admin</StyledText>
-                                </Button>
-                              )}
-                              {user.role === 'admin' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onPress={() => updateUserRole(user.user_id, 'user')}
-                                >
-                                  <UserX className="h-4 w-4 mr-1 text-gray-700" />
-                                  <StyledText className="text-gray-700 text-sm">Remove Admin</StyledText>
-                                </Button>
-                              )}
-                            </StyledView>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </StyledView>
-              </CardContent>
+                            } catch (error) {
+                              console.error('Error updating user role:', error);
+                            }
+                          }}
+                        >
+                          <Text style={{ color: '#007AFF', fontSize: 12, fontWeight: '600' }}>Make Admin</Text>
+                        </Button>
+                      )}
+                      {user.role === 'admin' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onPress={() => {
+                            try {
+                              if (user.user_id) {
+                                updateUserRole(user.user_id, 'user');
+                              }
+                            } catch (error) {
+                              console.error('Error updating user role:', error);
+                            }
+                          }}
+                        >
+                          <Text style={{ color: '#007AFF', fontSize: 12, fontWeight: '600' }}>Remove Admin</Text>
+                        </Button>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              ))}
             </Card>
-          </TabsContent>
-        </Tabs>
-      </StyledView>
+          </View>
+        )}
+
+        {/* Configuration Tab */}
+        {activeTab === 'config' && (
+          <AdminConfiguration />
+        )}
+      </View>
     </ScrollView>
   );
 }

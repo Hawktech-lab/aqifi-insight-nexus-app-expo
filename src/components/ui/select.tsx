@@ -2,7 +2,7 @@ import * as React from "react"
 import { View, TouchableOpacity, Text, Modal, ScrollView } from "react-native"
 import { ChevronDown, Check } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface SelectProps {
   value?: string;

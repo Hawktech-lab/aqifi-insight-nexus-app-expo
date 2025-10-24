@@ -2,8 +2,8 @@ import * as React from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
+import { cn } from "../../lib/utils";
+import { buttonVariants } from "../../components/ui/button";
 
 export interface CalendarProps {
   selected?: Date;

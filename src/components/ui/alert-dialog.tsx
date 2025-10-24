@@ -11,7 +11,7 @@ import { cva, type VariantProps } from "class-variance-authority"; // For button
 
 // Assume cn utility is available, similar to how it's used in web projects
 // You might need to adjust the path based on your project structure.
-import { cn } from "@/lib/utils"; // Path might need adjustment to e.g., ../lib/utils
+import { cn } from "../../lib/utils"; // Path might need adjustment to e.g., ../lib/utils
 
 const StyledView = styled(View);
 const StyledText = styled(Text);

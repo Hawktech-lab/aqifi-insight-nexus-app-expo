@@ -3,7 +3,7 @@ import { View, TouchableOpacity, Text } from "react-native"
 import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface ToastProviderProps {
   children: React.ReactNode;

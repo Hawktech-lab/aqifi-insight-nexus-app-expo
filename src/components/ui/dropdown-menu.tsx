@@ -2,7 +2,7 @@ import * as React from "react"
 import { View, TouchableOpacity, Text, Modal } from "react-native"
 import { Check, ChevronRight, Circle } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface DropdownMenuProps {
   children: React.ReactNode;

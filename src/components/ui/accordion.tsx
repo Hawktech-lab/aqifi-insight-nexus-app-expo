@@ -7,7 +7,7 @@ import { styled } from "nativewind";
 // You might need to adjust the path based on your project structure.
 // If not available, you can define a simple cn function:
 // const cn = (...args: any[]) => args.filter(Boolean).join(' ');
-import { cn } from "@/lib/utils"; // Path might need adjustment to e.g., ../lib/utils
+import { cn } from "../../lib/utils"; // Path might need adjustment to e.g., ../lib/utils
 
 const StyledView = styled(View);
 const StyledText = styled(Text);

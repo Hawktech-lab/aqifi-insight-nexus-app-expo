@@ -1,0 +1,722 @@
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export interface GmailAuthResult {
+  success: boolean;
+  accessToken?: string;
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    photo?: string;
+  };
+  error?: string;
+}
+
+export interface GmailMessage {
+  id: string;
+  threadId: string;
+  labelIds: string[];
+  snippet: string;
+  payload: {
+    headers: Array<{
+      name: string;
+      value: string;
+    }>;
+    parts?: any[];
+  };
+  sizeEstimate: number;
+  historyId: string;
+  internalDate: string;
+}
+
+class GmailAuthService {
+  private static instance: GmailAuthService;
+  private readonly ACCESS_TOKEN_KEY = 'gmail_access_token';
+  private readonly REFRESH_TOKEN_KEY = 'gmail_refresh_token';
+  private readonly USER_INFO_KEY = 'gmail_user_info';
+
+  public static getInstance(): GmailAuthService {
+    if (!GmailAuthService.instance) {
+      GmailAuthService.instance = new GmailAuthService();
+    }
+    return GmailAuthService.instance;
+  }
+
+  /**
+   * Test OAuth configuration
+   */
+  public async testConfiguration(): Promise<{ success: boolean; error?: string; details?: any }> {
+    try {
+      // Try multiple ways to get the client ID
+      let clientId = Constants.expoConfig?.extra?.googleClientId;
+      if (!clientId) {
+        clientId = Constants.expoConfig?.extra?.googleServices?.android?.clientId;
+      }
+      if (!clientId) {
+        clientId = "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com";
+      }
+      
+      if (!clientId) {
+        return {
+          success: false,
+          error: 'Google Client ID not found in app configuration'
+        };
+      }
+
+      // Test if Google Play Services are available
+      try {
+        await GoogleSignin.hasPlayServices();
+      } catch (playServicesError) {
+        return {
+          success: false,
+          error: 'Google Play Services not available',
+          details: playServicesError
+        };
+      }
+
+      // Test configuration with more detailed error handling
+      try {
+        await GoogleSignin.configure({
+          webClientId: clientId,
+          offlineAccess: true,
+          scopes: [
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile'
+          ],
+          forceCodeForRefreshToken: true,
+        });
+      } catch (configError) {
+        return {
+          success: false,
+          error: `Configuration failed: ${configError instanceof Error ? configError.message : configError}`,
+          details: {
+            configError,
+            clientId,
+            packageName: Constants.expoConfig?.android?.package || Constants.expoConfig?.ios?.bundleIdentifier,
+            appName: Constants.expoConfig?.name
+          }
+        };
+      }
+
+      // Additional test - try to get current user (should fail gracefully if not signed in)
+      try {
+        const currentUser = await GoogleSignin.getCurrentUser();
+        console.log('Current user test result:', currentUser);
+      } catch (userError) {
+        console.log('No current user (expected if not signed in):', userError);
+      }
+
+      return {
+        success: true,
+        details: {
+          clientId: clientId,
+          playServicesAvailable: true,
+          configurationComplete: true,
+          appConfig: {
+            expoConfig: !!Constants.expoConfig,
+            extra: !!Constants.expoConfig?.extra,
+            googleClientId: !!Constants.expoConfig?.extra?.googleClientId,
+            packageName: Constants.expoConfig?.android?.package || Constants.expoConfig?.ios?.bundleIdentifier,
+            appName: Constants.expoConfig?.name
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Configuration test failed',
+        details: {
+          error: error,
+          clientId: Constants.expoConfig?.extra?.googleClientId,
+          expoConfig: Constants.expoConfig
+        }
+      };
+    }
+  }
+
+  /**
+   * Get SHA-1 fingerprint for debugging (Android only)
+   */
+  public async getSHA1Fingerprint(): Promise<string | null> {
+    try {
+      // This is a placeholder - in a real app, you'd get this from the keystore
+      // For development, you can get it using: keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+      return 'Development SHA-1 fingerprint needed - run: keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android';
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Comprehensive OAuth configuration checker
+   */
+  public async checkOAuthConfiguration(): Promise<{
+    success: boolean;
+    issues: string[];
+    recommendations: string[];
+    configDetails: any;
+  }> {
+    const issues: string[] = [];
+    const recommendations: string[] = [];
+    
+    try {
+      // Try multiple ways to get the client ID
+      let clientId = Constants.expoConfig?.extra?.googleClientId;
+      if (!clientId) {
+        clientId = Constants.expoConfig?.extra?.googleServices?.android?.clientId;
+      }
+      if (!clientId) {
+        clientId = "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com";
+      }
+      
+      const packageName = Constants.expoConfig?.android?.package || Constants.expoConfig?.ios?.bundleIdentifier;
+      const appName = Constants.expoConfig?.name;
+      
+      // Check 1: Client ID
+      if (!clientId) {
+        issues.push('Google Client ID not found in app configuration');
+        recommendations.push('Add googleClientId to app.config.ts extra section');
+      } else if (!clientId.includes('apps.googleusercontent.com')) {
+        issues.push('Client ID format appears incorrect');
+        recommendations.push('Verify Client ID format: should end with .apps.googleusercontent.com');
+      }
+      
+      // Check 2: Package Name
+      if (!packageName) {
+        issues.push('Package name not found in app configuration');
+        recommendations.push('Add package name to android.package or ios.bundleIdentifier');
+      } else if (packageName !== 'com.aqifi.insightnexus') {
+        issues.push(`Package name mismatch: ${packageName} (expected: com.aqifi.insightnexus)`);
+        recommendations.push('Update Google Console OAuth client with correct package name');
+      }
+      
+      // Check 3: App Name
+      if (!appName) {
+        issues.push('App name not found in configuration');
+        recommendations.push('Add app name to app.config.ts');
+      }
+      
+      // Check 4: Test Google Sign-In configuration
+      try {
+        await GoogleSignin.configure({
+          webClientId: clientId,
+          offlineAccess: true,
+          scopes: [
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile'
+          ],
+          forceCodeForRefreshToken: true,
+        });
+      } catch (configError) {
+        issues.push(`Google Sign-In configuration failed: ${configError instanceof Error ? configError.message : configError}`);
+        recommendations.push('Check OAuth client configuration in Google Console');
+      }
+      
+      // Check 5: Play Services
+      try {
+        await GoogleSignin.hasPlayServices();
+      } catch (playServicesError) {
+        issues.push('Google Play Services not available');
+        recommendations.push('Update Google Play Services on device');
+      }
+      
+      return {
+        success: issues.length === 0,
+        issues,
+        recommendations,
+        configDetails: {
+          clientId,
+          packageName,
+          appName,
+          platform: Constants.platform,
+          isDevice: Constants.isDevice
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        issues: [`Configuration check failed: ${error instanceof Error ? error.message : error}`],
+        recommendations: ['Check app configuration and Google Console setup'],
+        configDetails: { error }
+      };
+    }
+  }
+
+  /**
+   * Get detailed debugging information
+   */
+  public async getDebugInfo(): Promise<any> {
+    try {
+      // Try multiple ways to get the client ID
+      let clientId = Constants.expoConfig?.extra?.googleClientId;
+      if (!clientId) {
+        clientId = Constants.expoConfig?.extra?.googleServices?.android?.clientId;
+      }
+      if (!clientId) {
+        clientId = "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com";
+      }
+      
+      const gmailApiKey = Constants.expoConfig?.extra?.gmailApiKey;
+      
+      // Check if GoogleSignin is properly imported
+      const googleSigninStatus = {
+        imported: typeof GoogleSignin !== 'undefined',
+        hasPlayServices: typeof GoogleSignin.hasPlayServices === 'function',
+        configure: typeof GoogleSignin.configure === 'function',
+        signIn: typeof GoogleSignin.signIn === 'function',
+        isSignedIn: typeof GoogleSignin.isSignedIn === 'function',
+        getCurrentUser: typeof GoogleSignin.getCurrentUser === 'function',
+        signOut: typeof GoogleSignin.signOut === 'function',
+        getTokens: typeof GoogleSignin.getTokens === 'function',
+        // Check for any other available methods
+        allMethods: Object.getOwnPropertyNames(GoogleSignin).filter(name => typeof GoogleSignin[name] === 'function')
+      };
+      
+      // Test Play Services
+      let playServicesStatus = 'unknown';
+      try {
+        if (googleSigninStatus.hasPlayServices) {
+          await GoogleSignin.hasPlayServices();
+          playServicesStatus = 'available';
+        } else {
+          playServicesStatus = 'hasPlayServices method not available';
+        }
+      } catch (error) {
+        playServicesStatus = `error: ${error}`;
+      }
+
+      // Test configuration
+      let configStatus = 'unknown';
+      try {
+        await GoogleSignin.configure({
+          webClientId: clientId,
+          offlineAccess: true,
+          scopes: [
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile'
+          ],
+          forceCodeForRefreshToken: true,
+        });
+        configStatus = 'success';
+      } catch (error) {
+        configStatus = `error: ${error}`;
+      }
+
+      // Check current sign-in status
+      let signInStatus = 'unknown';
+      try {
+        // Try different methods to check sign-in status
+        if (typeof GoogleSignin.isSignedIn === 'function') {
+          const isSignedIn = await GoogleSignin.isSignedIn();
+          signInStatus = isSignedIn ? 'signed_in' : 'not_signed_in';
+        } else if (typeof GoogleSignin.getCurrentUser === 'function') {
+          // Alternative: try to get current user
+          try {
+            const currentUser = await GoogleSignin.getCurrentUser();
+            signInStatus = currentUser ? 'signed_in' : 'not_signed_in';
+          } catch (userError) {
+            signInStatus = 'not_signed_in';
+          }
+        } else {
+          signInStatus = 'no sign-in status methods available';
+        }
+      } catch (error) {
+        signInStatus = `error: ${error instanceof Error ? error.message : error}`;
+      }
+
+      return {
+        timestamp: new Date().toISOString(),
+        appConfig: {
+          expoConfig: !!Constants.expoConfig,
+          extra: !!Constants.expoConfig?.extra,
+          googleClientId: clientId,
+          gmailApiKey: gmailApiKey,
+          appName: Constants.expoConfig?.name,
+          appVersion: Constants.expoConfig?.version,
+          packageName: Constants.expoConfig?.android?.package || Constants.expoConfig?.ios?.bundleIdentifier,
+          sha1Fingerprint: await this.getSHA1Fingerprint()
+        },
+        googleSignIn: {
+          playServicesStatus,
+          configStatus,
+          signInStatus,
+          clientId: clientId,
+          libraryStatus: googleSigninStatus
+        },
+        platform: {
+          platform: Constants.platform,
+          isDevice: Constants.isDevice
+        }
+      };
+    } catch (error) {
+      return {
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: error
+      };
+    }
+  }
+
+  /**
+   * Initialize Google Sign-In configuration
+   */
+  public async initialize(): Promise<void> {
+    try {
+      // Check if GoogleSignin is properly imported
+      if (!GoogleSignin) {
+        throw new Error('GoogleSignin is not properly imported');
+      }
+
+      // Check if required methods exist
+      if (typeof GoogleSignin.configure !== 'function') {
+        throw new Error('GoogleSignin.configure is not a function');
+      }
+
+      // Try multiple ways to get the client ID
+      let clientId = Constants.expoConfig?.extra?.googleClientId;
+      
+      // Fallback: try to get from googleServices
+      if (!clientId) {
+        clientId = Constants.expoConfig?.extra?.googleServices?.android?.clientId;
+      }
+      
+      // Fallback: hardcoded client ID as last resort
+      if (!clientId) {
+        clientId = "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com";
+        console.warn('Using hardcoded client ID - configuration issue detected');
+      }
+      
+      console.log('Using client ID:', clientId);
+      console.log('Constants.expoConfig:', Constants.expoConfig);
+      console.log('Constants.expoConfig?.extra:', Constants.expoConfig?.extra);
+
+      await GoogleSignin.configure({
+        webClientId: clientId,
+        offlineAccess: true,
+        // Removed hostedDomain to avoid developer error
+        scopes: [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/userinfo.profile'
+        ],
+        forceCodeForRefreshToken: true,
+      });
+
+      console.log('Google Sign-In configured successfully');
+    } catch (error) {
+      console.error('Error initializing Google Sign-In:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Sign in with Google and get Gmail access
+   */
+  public async signInWithGmail(): Promise<GmailAuthResult> {
+    try {
+      console.log('Starting Gmail sign-in process...');
+      
+      // Check if GoogleSignin is properly imported and has required methods
+      if (!GoogleSignin) {
+        throw new Error('GoogleSignin is not properly imported');
+      }
+
+      if (typeof GoogleSignin.hasPlayServices !== 'function') {
+        throw new Error('GoogleSignin.hasPlayServices is not a function');
+      }
+
+      if (typeof GoogleSignin.signIn !== 'function') {
+        throw new Error('GoogleSignin.signIn is not a function');
+      }
+
+      if (typeof GoogleSignin.getTokens !== 'function') {
+        throw new Error('GoogleSignin.getTokens is not a function');
+      }
+      
+      // Get client ID with fallbacks
+      let clientId = Constants.expoConfig?.extra?.googleClientId;
+      if (!clientId) {
+        clientId = Constants.expoConfig?.extra?.googleServices?.android?.clientId;
+      }
+      if (!clientId) {
+        clientId = "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com";
+      }
+      
+      // Check if Google Play Services are available
+      try {
+        await GoogleSignin.hasPlayServices();
+        console.log('Google Play Services available');
+      } catch (playServicesError) {
+        console.error('Google Play Services error:', playServicesError);
+        return {
+          success: false,
+          error: 'Google Play Services not available. Please update Google Play Services.'
+        };
+      }
+      
+      // Sign in with detailed error capture
+      console.log('Attempting Google Sign-In...');
+      console.log('Sign-in configuration:', {
+        webClientId: clientId,
+        offlineAccess: true,
+        scopes: [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/userinfo.profile'
+        ],
+        forceCodeForRefreshToken: true,
+      });
+      
+      const userInfo = await GoogleSignin.signIn();
+      console.log('Google Sign-In successful, user info:', userInfo.data?.user?.email);
+      
+      // Check if it's a Gmail account
+      if (!userInfo.data?.user?.email?.endsWith('@gmail.com')) {
+        console.log('Non-Gmail account detected, signing out');
+        await this.signOut();
+        return {
+          success: false,
+          error: 'Please sign in with a Gmail account. You signed in with: ' + userInfo.data?.user?.email
+        };
+      }
+
+      // Get access tokens
+      const tokens = await GoogleSignin.getTokens();
+      
+      // Store tokens and user info
+      await this.storeAuthData(tokens.accessToken, tokens.refreshToken, userInfo.data.user);
+      
+      console.log('Gmail sign-in successful');
+      return {
+        success: true,
+        accessToken: tokens.accessToken,
+        user: {
+          id: userInfo.data.user.id,
+          email: userInfo.data.user.email,
+          name: userInfo.data.user.name || '',
+          photo: userInfo.data.user.photo || undefined
+        }
+      };
+    } catch (error: any) {
+      console.error('Gmail sign-in error:', error);
+      
+      console.error('Gmail sign-in error details:', {
+        code: error.code,
+        message: error.message,
+        error: error,
+        stack: error.stack,
+        name: error.name
+      });
+
+      // Enhanced error handling with more specific developer error details
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        return {
+          success: false,
+          error: 'Sign-in was cancelled by user'
+        };
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        return {
+          success: false,
+          error: 'Sign-in is already in progress'
+        };
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        return {
+          success: false,
+          error: 'Google Play Services not available. Please update Google Play Services.'
+        };
+      } else if (error.code === 'DEVELOPER_ERROR' || error.message?.includes('DEVELOPER_ERROR')) {
+        return {
+          success: false,
+          error: `Developer configuration error: ${error.message || 'OAuth client setup issue'}. Check: 1) Client ID in Google Console, 2) SHA-1 fingerprint, 3) Package name/bundle ID, 4) OAuth consent screen configuration.`,
+          debugInfo: {
+            errorCode: error.code,
+            errorMessage: error.message,
+            clientId: Constants.expoConfig?.extra?.googleClientId,
+            appName: Constants.expoConfig?.name,
+            packageName: Constants.expoConfig?.android?.package || Constants.expoConfig?.ios?.bundleIdentifier
+          }
+        };
+      } else if (error.code === 'NETWORK_ERROR') {
+        return {
+          success: false,
+          error: 'Network error. Please check your internet connection.'
+        };
+      } else if (error.code === 'SIGN_IN_REQUIRED') {
+        return {
+          success: false,
+          error: 'Sign-in required. Please try again.'
+        };
+      } else {
+        return {
+          success: false,
+          error: `Sign-in failed: ${error.message || error.code || 'Unknown error'}`,
+          debugInfo: {
+            errorCode: error.code,
+            errorMessage: error.message,
+            errorName: error.name,
+            fullError: error
+          }
+        };
+      }
+    }
+  }
+
+  /**
+   * Sign out from Google
+   */
+  public async signOut(): Promise<void> {
+    try {
+      await GoogleSignin.signOut();
+      await this.clearAuthData();
+      console.log('Gmail sign-out successful');
+    } catch (error) {
+      console.error('Gmail sign-out error:', error);
+      // Clear local data even if sign-out fails
+      await this.clearAuthData();
+    }
+  }
+
+  /**
+   * Check if user is signed in AND has valid tokens
+   */
+  public async isSignedIn(): Promise<boolean> {
+    try {
+      // Try different methods to check sign-in status
+      let isSignedIn = false;
+      
+      if (typeof GoogleSignin.isSignedIn === 'function') {
+        isSignedIn = await GoogleSignin.isSignedIn();
+      } else if (typeof GoogleSignin.getCurrentUser === 'function') {
+        // Alternative: try to get current user
+        try {
+          const currentUser = await GoogleSignin.getCurrentUser();
+          isSignedIn = !!currentUser;
+        } catch (userError) {
+          isSignedIn = false;
+        }
+      } else {
+        // Fallback: check stored tokens
+        const accessToken = await this.getAccessToken();
+        isSignedIn = !!accessToken;
+      }
+      
+      if (!isSignedIn) {
+        return false;
+      }
+      
+      // Additional check: verify we can get a valid access token
+      const accessToken = await this.getAccessToken();
+      if (!accessToken) {
+        console.log('User appears signed in but no valid access token available');
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error checking sign-in status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get current access token
+   */
+  public async getAccessToken(): Promise<string | null> {
+    try {
+      const tokens = await GoogleSignin.getTokens();
+      return tokens.accessToken;
+    } catch (error) {
+      console.error('Error getting access token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Refresh access token
+   */
+  public async refreshAccessToken(): Promise<string | null> {
+    try {
+      const tokens = await GoogleSignin.getTokens();
+      return tokens.accessToken;
+    } catch (error) {
+      console.error('Error refreshing access token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get current user info
+   */
+  public async getCurrentUser(): Promise<any> {
+    try {
+      const userInfo = await GoogleSignin.getCurrentUser();
+      return userInfo?.data?.user || null;
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Store authentication data locally
+   */
+  private async storeAuthData(accessToken: string, refreshToken: string, user: any): Promise<void> {
+    try {
+      await AsyncStorage.setItem(this.ACCESS_TOKEN_KEY, accessToken);
+      await AsyncStorage.setItem(this.REFRESH_TOKEN_KEY, refreshToken);
+      await AsyncStorage.setItem(this.USER_INFO_KEY, JSON.stringify(user));
+    } catch (error) {
+      console.error('Error storing auth data:', error);
+    }
+  }
+
+  /**
+   * Clear authentication data
+   */
+  private async clearAuthData(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(this.ACCESS_TOKEN_KEY);
+      await AsyncStorage.removeItem(this.REFRESH_TOKEN_KEY);
+      await AsyncStorage.removeItem(this.USER_INFO_KEY);
+    } catch (error) {
+      console.error('Error clearing auth data:', error);
+    }
+  }
+
+  /**
+   * Get stored access token
+   */
+  public async getStoredAccessToken(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(this.ACCESS_TOKEN_KEY);
+    } catch (error) {
+      console.error('Error getting stored access token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get stored user info
+   */
+  public async getStoredUserInfo(): Promise<any> {
+    try {
+      const userInfo = await AsyncStorage.getItem(this.USER_INFO_KEY);
+      return userInfo ? JSON.parse(userInfo) : null;
+    } catch (error) {
+      console.error('Error getting stored user info:', error);
+      return null;
+    }
+  }
+}
+
+export default GmailAuthService;

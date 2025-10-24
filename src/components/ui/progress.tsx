@@ -1,7 +1,7 @@
 import * as React from "react"
 import { View, ViewProps } from "react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface ProgressProps extends ViewProps {
   value?: number;

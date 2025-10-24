@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native'; // Import React Native components
-import { useAuth } from '@/contexts/AuthContext'; // Assuming AuthContext is correctly set up for RN
+import { useAuth } from '../contexts/AuthContext'; // Assuming AuthContext is correctly set up for RN
 
 // Replicating simplified Card components for React Native
 const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (

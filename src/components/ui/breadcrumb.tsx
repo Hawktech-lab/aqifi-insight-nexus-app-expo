@@ -2,7 +2,7 @@ import * as React from "react"
 import { View, TouchableOpacity, Text } from "react-native"
 import { ChevronRight, MoreHorizontal } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface BreadcrumbProps {
   children: React.ReactNode;

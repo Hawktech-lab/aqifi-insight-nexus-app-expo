@@ -2,8 +2,8 @@ import * as React from "react"
 import { View, TextInput, ScrollView, TouchableOpacity, Text } from "react-native"
 import { Search } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { cn } from "../../lib/utils"
+import { Dialog, DialogContent } from "../../components/ui/dialog"
 
 interface CommandProps {
   children: React.ReactNode;

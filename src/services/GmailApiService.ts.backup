@@ -1,0 +1,310 @@
+import GmailAuthService, { GmailMessage } from './GmailAuthService';
+import Constants from 'expo-constants';
+
+export interface GmailApiResult {
+  success: boolean;
+  messages?: any[];
+  error?: string;
+  nextPageToken?: string;
+}
+
+export interface EmailMetadata {
+  messageId: string;
+  from: string;
+  to: string[];
+  subject: string;
+  date: string;
+  threadId?: string;
+  labels?: string[];
+  isRead?: boolean;
+  isImportant?: boolean;
+  hasAttachments?: boolean;
+  size?: number;
+}
+
+class GmailApiService {
+  private static instance: GmailApiService;
+  private readonly GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1';
+  private readonly MAX_RESULTS = 50; // Maximum messages per request
+
+  public static getInstance(): GmailApiService {
+    if (!GmailApiService.instance) {
+      GmailApiService.instance = new GmailApiService();
+    }
+    return GmailApiService.instance;
+  }
+
+  /**
+   * Get Gmail API key from app configuration
+   */
+  private getGmailApiKey(): string {
+    const apiKey = Constants.expoConfig?.extra?.gmailApiKey;
+    if (!apiKey) {
+      throw new Error('Gmail API key not found in app configuration');
+    }
+    return apiKey;
+  }
+
+  /**
+   * Get Gmail messages with metadata
+   */
+  public async getMessages(
+    maxResults: number = this.MAX_RESULTS,
+    pageToken?: string,
+    query?: string
+  ): Promise<GmailApiResult> {
+    try {
+      const authService = GmailAuthService.getInstance();
+      const accessToken = await authService.getAccessToken();
+      
+      if (!accessToken) {
+        return {
+          success: false,
+          error: 'No access token available. Please sign in to Gmail.'
+        };
+      }
+
+      // Build query parameters
+      const params = new URLSearchParams({
+        maxResults: maxResults.toString(),
+        includeSpamTrash: 'false',
+        key: this.getGmailApiKey() // Add API key for validation
+      });
+
+      if (pageToken) {
+        params.append('pageToken', pageToken);
+      }
+
+      if (query) {
+        params.append('q', query);
+      }
+
+      // Get message list
+      const listResponse = await fetch(
+        `${this.GMAIL_API_BASE}/users/me/messages?${params}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!listResponse.ok) {
+        const errorData = await listResponse.json();
+        throw new Error(errorData.error?.message || 'Failed to fetch messages');
+      }
+
+      const listData = await listResponse.json();
+      const messages = listData.messages || [];
+
+      // Get detailed message data
+      const detailedMessages = await Promise.all(
+        messages.map((message: any) => this.getMessageDetails(message.id, accessToken))
+      );
+
+      return {
+        success: true,
+        messages: detailedMessages.filter(msg => msg !== null),
+        nextPageToken: listData.nextPageToken
+      };
+    } catch (error) {
+      console.error('Error fetching Gmail messages:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch messages'
+      };
+    }
+  }
+
+  /**
+   * Get detailed message information
+   */
+  private async getMessageDetails(messageId: string, accessToken: string): Promise<any> {
+    try {
+      const response = await fetch(
+        `${this.GMAIL_API_BASE}/users/me/messages/${messageId}?key=${this.getGmailApiKey()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        console.error(`Failed to fetch message ${messageId}`);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Error fetching message ${messageId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Extract email metadata from Gmail message
+   */
+  public extractEmailMetadata(message: GmailMessage): EmailMetadata | null {
+    try {
+      if (!message.payload?.headers) {
+        return null;
+      }
+
+      const headers = message.payload.headers;
+      
+      // Extract headers
+      const fromHeader = headers.find(h => h.name.toLowerCase() === 'from');
+      const toHeader = headers.find(h => h.name.toLowerCase() === 'to');
+      const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
+      const dateHeader = headers.find(h => h.name.toLowerCase() === 'date');
+
+      if (!fromHeader || !toHeader) {
+        return null;
+      }
+
+      // Parse recipients
+      const toAddresses = toHeader.value
+        .split(',')
+        .map(addr => addr.trim())
+        .filter(addr => addr.length > 0);
+
+      // Check for attachments
+      const hasAttachments = this.checkForAttachments(message.payload);
+
+      // Check if message is read
+      const isRead = !message.labelIds?.includes('UNREAD');
+
+      // Check if message is important
+      const isImportant = message.labelIds?.includes('IMPORTANT') || false;
+
+      return {
+        messageId: message.id,
+        from: fromHeader.value,
+        to: toAddresses,
+        subject: subjectHeader?.value || '',
+        date: dateHeader?.value || new Date(parseInt(message.internalDate)).toISOString(),
+        threadId: message.threadId,
+        labels: message.labelIds || [],
+        isRead,
+        isImportant,
+        hasAttachments,
+        size: message.sizeEstimate
+      };
+    } catch (error) {
+      console.error('Error extracting email metadata:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if message has attachments
+   */
+  private checkForAttachments(payload: any): boolean {
+    try {
+      if (payload.parts) {
+        return payload.parts.some((part: any) => 
+          part.filename && part.filename.length > 0
+        );
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking for attachments:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get messages since a specific date
+   */
+  public async getMessagesSince(
+    sinceDate: Date,
+    maxResults: number = this.MAX_RESULTS
+  ): Promise<GmailApiResult> {
+    const sinceTimestamp = Math.floor(sinceDate.getTime() / 1000);
+    const query = `after:${sinceTimestamp}`;
+    
+    return this.getMessages(maxResults, undefined, query);
+  }
+
+  /**
+   * Get unread messages
+   */
+  public async getUnreadMessages(maxResults: number = this.MAX_RESULTS): Promise<GmailApiResult> {
+    return this.getMessages(maxResults, undefined, 'is:unread');
+  }
+
+  /**
+   * Get messages from a specific sender
+   */
+  public async getMessagesFrom(
+    senderEmail: string,
+    maxResults: number = this.MAX_RESULTS
+  ): Promise<GmailApiResult> {
+    const query = `from:${senderEmail}`;
+    return this.getMessages(maxResults, undefined, query);
+  }
+
+  /**
+   * Get messages newer than a specific message ID (incremental collection)
+   */
+  public async getMessagesSinceMessageId(
+    lastMessageId: string,
+    maxResults: number = this.MAX_RESULTS
+  ): Promise<GmailApiResult> {
+    try {
+      const authService = GmailAuthService.getInstance();
+      const accessToken = await authService.getAccessToken();
+      
+      if (!accessToken) {
+        return {
+          success: false,
+          error: 'No access token available. Please sign in to Gmail.'
+        };
+      }
+
+      // Get the timestamp of the last message to use as a filter
+      const lastMessageDetails = await this.getMessageDetails(lastMessageId, accessToken);
+      if (!lastMessageDetails) {
+        // If we can't get the last message details, fall back to recent messages
+        console.log('Could not get last message details, falling back to recent messages');
+        return this.getMessages(maxResults);
+      }
+
+      const lastMessageTimestamp = parseInt(lastMessageDetails.internalDate);
+      const sinceTimestamp = Math.floor(lastMessageTimestamp / 1000);
+      
+      // Use Gmail search to get messages newer than the last processed message
+      const query = `after:${sinceTimestamp}`;
+      console.log(`Searching for messages after timestamp: ${sinceTimestamp}`);
+      
+      return this.getMessages(maxResults, undefined, query);
+    } catch (error) {
+      console.error('Error fetching messages since message ID:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch messages since message ID'
+      };
+    }
+  }
+
+  /**
+   * Test Gmail API connection
+   */
+  public async testConnection(): Promise<boolean> {
+    try {
+      const result = await this.getMessages(1);
+      if (!result.success) {
+        throw new Error(result.error || 'Gmail API connection test failed');
+      }
+      return true;
+    } catch (error) {
+      console.error('Gmail API connection test failed:', error);
+      throw error; // Re-throw the error instead of returning false
+    }
+  }
+}
+
+export default GmailApiService;

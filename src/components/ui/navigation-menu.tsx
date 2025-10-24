@@ -3,7 +3,7 @@ import { View, TouchableOpacity, Text, ScrollView } from "react-native"
 import { cva } from "class-variance-authority"
 import { ChevronDown } from "lucide-react-native"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface NavigationMenuProps {
   children: React.ReactNode;

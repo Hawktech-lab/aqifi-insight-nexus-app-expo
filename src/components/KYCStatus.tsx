@@ -8,9 +8,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react-native';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../integrations/supabase/client';
+import { useProfile } from '../hooks/useProfile';
 import { KycVerificationModal } from './KycVerificationModal';
 
 interface KYCSubmission {
