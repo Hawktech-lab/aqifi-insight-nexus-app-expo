@@ -1,23 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ExpoConstants from 'expo-constants';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DeviceFingerprintingProvider, useDeviceFingerprinting } from './contexts/DeviceFingerprintingContext';
 
 import { supabase } from './integrations/supabase/client';
+
+// Safely get Constants with fallback
+const Constants = ExpoConstants || { expoConfig: { extra: {} } };
 import Icon from 'react-native-vector-icons/Ionicons';
 import Admin from './pages/Admin';
 import { useLocationData } from './hooks/useLocationData';
 import { useEmailMetadata } from './hooks/useEmailMetadata';
 import { useEmailAutoCollection } from './hooks/useEmailAutoCollection';
 import RealGmailAuthService from './services/RealGmailAuthService';
-import EmailAutoCollectionService from './services/EmailAutoCollectionService';
-import LocationDataService from './services/LocationDataService';
-import BehavioralAnalyticsService from './services/BehavioralAnalyticsService';
 import GmailAuthTest from './utils/GmailAuthTest';
 import GoogleSignInDiagnostic from './utils/GoogleSignInDiagnostic';
 
@@ -28,13 +29,21 @@ declare global {
       request: (args: { method: string; params?: any[] }) => Promise<any>;
       isMetaMask?: boolean;
     };
-  }
+  } 
 }
 import { useSpatialData } from './hooks/useSpatialData';
 import { useBehavioralAnalytics } from './hooks/useBehavioralAnalytics';
-//import LocationDataService from './services/LocationDataService';
+import LocationDataService from './services/LocationDataService';
 import SpatialDataService from './services/SpatialDataService';
-//import BehavioralAnalyticsService from './services/BehavioralAnalyticsService';
+import BehavioralAnalyticsService from './services/BehavioralAnalyticsService';
+import EmailAutoCollectionService from './services/EmailAutoCollectionService';
+import { ErrorLogViewer } from './components/ErrorLogViewer';
+import { ThirdPartyConfirmationModal } from './components/ThirdPartyConfirmationModal';
+import { errorLogger } from './utils/errorLogger';
+import { submitZkMeVerification, ZkMeVerificationPayload, verifyKycWithZkMeServices } from './services/zkmeApi';
+import AppConfigurationService from './services/AppConfigurationService';
+// Lazy load ZkMe component to prevent initialization crashes
+// Component will be loaded only when needed (when showKyc becomes true)
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -205,7 +214,7 @@ const LoginScreen = ({ navigation }: any) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
@@ -213,10 +222,10 @@ const LoginScreen = ({ navigation }: any) => {
     try {
       const { error } = await signIn(email, password);
       if (error) {
-        Alert.alert('Login Failed', error.message);
+         Alert.alert('Login Failed', error.message);
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -289,17 +298,17 @@ const SignUpScreen = ({ navigation }: any) => {
 
   const handleSignUp = async () => {
     if (!email || !password || !confirmPassword || !firstName || !lastName) {
-      Alert.alert('Error', 'Please fill in all fields');
+       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+       Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
@@ -307,13 +316,13 @@ const SignUpScreen = ({ navigation }: any) => {
     try {
       const { error } = await signUp(email, password, firstName, lastName);
       if (error) {
-        Alert.alert('Sign Up Failed', error.message);
+         Alert.alert('Sign Up Failed', error.message);
       } else {
-        Alert.alert('Success', 'Account created! Please check your email to verify your account.');
+         Alert.alert('Success', 'Account created! Please check your email to verify your account.');
         navigation.navigate('Login');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -504,39 +513,119 @@ const DashboardScreen = ({ navigation }: any) => {
   );
 };
 
-// Activity Screen showing data streams (matching original React app)
-const ActivityScreen = () => {
-  const { user } = useAuth();
-  const isGmailUser = user?.email?.endsWith('@gmail.com') || false;
-  const { data: dataStreams, isLoading } = useDataStreams();
-  const { isTracking: locationTracking, dataCount: locationDataCount } = useLocationData();
-  const { isEnabled: spatialEnabled, dataCount: spatialDataCount } = useSpatialData();
-  const { collectEmailMetadata, isCollecting: isEmailCollecting, stats: emailStats, fetchStats: fetchEmailStats, debugEmailCollection } = useEmailMetadata();
+// Gmail Email Features Component - Only used for Gmail users
+// This component contains the email hooks, so they're only called when this component is rendered
+const GmailEmailFeatures = ({ 
+  stream, 
+  isEnabled 
+}: { 
+  stream: any; 
+  isEnabled: boolean;
+}) => {
+  // Email hooks are called here - only when this component is rendered (i.e., for Gmail users)
+  const { collectEmailMetadata, isCollecting: isEmailCollecting } = useEmailMetadata();
   const {
     status: autoCollectionStatus,
     startAutoCollection,
     stopAutoCollection,
-    forceCollection,
-    handleReauth
+    handleReauth,
+    updateStatus
   } = useEmailAutoCollection();
+  
+  // Refresh status when component mounts or becomes visible to ensure it reflects current state
+  React.useEffect(() => {
+    if (isEnabled && updateStatus) {
+      // Refresh status immediately when component becomes visible
+      updateStatus();
+    }
+  }, [isEnabled, updateStatus]);
+  
+  // Provide safe defaults - but only if status is not yet loaded
+  const safeAutoCollectionStatus = autoCollectionStatus || {
+    isRunning: false,
+    config: { intervalMinutes: 30 },
+    session: { isSessionValid: true },
+    needsReauth: false
+  };
+  
+  const safeStartAutoCollection = startAutoCollection || (() => Promise.resolve());
+  const safeStopAutoCollection = stopAutoCollection || (() => Promise.resolve());
+  const safeHandleReauth = handleReauth || (() => Promise.resolve());
+  
+  if (!isEnabled) return null;
+  
+  return (
+    <View style={styles.emailCollectionSection}>
+      {/* Auto-Collection Status */}
+      {safeAutoCollectionStatus.isRunning ? (
+        <View style={styles.autoCollectionStatusActive}>
+          <View style={styles.statusHeader}>
+            <Icon name="checkmark-circle" size={20} color="#34C759" />
+            <Text style={styles.statusTitle}>Auto-Collection Active</Text>
+            <TouchableOpacity 
+              style={styles.stopButton}
+              onPress={safeStopAutoCollection}
+            >
+              <Text style={styles.stopButtonText}>Stop</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.statusSubtitle}>
+            Collecting every {safeAutoCollectionStatus.config?.intervalMinutes || 30} minutes
+          </Text>
+        </View>
+      ) : null
+      /* Auto-Collection Disabled section commented out - status will only show when active */
+      /* When auto-collection is enabled from Settings, the status should update automatically via the hook */
+      /* The hook's updateStatus() is called after startAutoCollection (line 108), and there's also periodic updates every 30 seconds */
+      /* 
+      <View style={styles.autoCollectionStatusDisabled}>
+        <View style={styles.statusHeader}>
+          <Icon name="warning" size={20} color="#FF9500" />
+          <Text style={styles.statusTitle}>Auto-Collection Disabled</Text>
+        </View>
+        <Text style={styles.statusSubtitle}>
+          Enable from Settings to automatically collect emails
+        </Text>
+      </View>
+      */}
+
+      {/* Re-authentication prompt */}
+      {safeAutoCollectionStatus.needsReauth && (
+        <View style={styles.reauthPrompt}>
+          <View style={styles.statusHeader}>
+            <Icon name="warning" size={20} color="#FF3B30" />
+            <Text style={styles.statusTitle}>Session Expired</Text>
+            <TouchableOpacity 
+              style={styles.reauthButton}
+              onPress={safeHandleReauth}
+            >
+              <Text style={styles.reauthButtonText}>Re-auth</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.statusSubtitle}>
+            Please re-authenticate to continue auto-collection
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
+
+// Activity Screen showing data streams (matching original React app)
+const ActivityScreen = () => {
+  const { user } = useAuth();
+  const isGmailUser = user?.email?.endsWith('@gmail.com') || false;
+  
+  // Common hooks for all users - called unconditionally
+  const { data: dataStreams, isLoading } = useDataStreams();
+  const { isTracking: locationTracking, dataCount: locationDataCount } = useLocationData();
+  const { isEnabled: spatialEnabled, dataCount: spatialDataCount } = useSpatialData();
   const { 
     isEnabled: behavioralEnabled, 
     dataCount: behavioralDataCount, 
     isAnalyzing,
     analyzeBehavior 
   } = useBehavioralAnalytics();
-
-  // Auth safety: if user is signed out, avoid rendering private content
-  if (!user) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.screenTitle}>Activity & Data Streams</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardSubtitle}>Please sign in to view activity.</Text>
-        </View>
-      </View>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -556,11 +645,73 @@ const ActivityScreen = () => {
     return true;
   });
   
-  const activeStreams = filteredStreams.filter((stream: any) => stream.is_enabled) || [];
-  const totalEarnings = filteredStreams.reduce((sum: number, stream: any) => 
-    sum + (stream.data_count || 0) * 1, 0 // 1 point per data collected
-  ) || 0;
-  const pendingStreams = filteredStreams.filter((stream: any) => !stream.is_enabled) || [];
+  // Ensure location, spatial, and behavioral streams are always shown (even if not in database)
+  // These features should be available to all users, not just Gmail users
+  const requiredStreamTypes = ['location', 'spatial', 'behavioral'];
+  const existingStreamTypes = filteredStreams.map((s: any) => s.stream_type);
+  
+  // Create fallback streams for missing required types
+  const fallbackStreams = requiredStreamTypes
+    .filter(type => !existingStreamTypes.includes(type))
+    .map((type) => ({
+      id: `fallback-${type}`,
+      stream_type: type,
+      is_enabled: false,
+      data_count: 0,
+      last_sync_at: null,
+      user_id: user?.id || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }));
+  
+  // Combine database streams with fallback streams
+  const allStreams = [...filteredStreams, ...fallbackStreams];
+  
+  // Debug: Log stream information
+  console.log('ActivityScreen - User:', user?.email, 'isGmailUser:', isGmailUser);
+  console.log('ActivityScreen - dataStreams:', dataStreams?.length || 0);
+  console.log('ActivityScreen - filteredStreams:', filteredStreams.length);
+  console.log('ActivityScreen - fallbackStreams:', fallbackStreams.length);
+  console.log('ActivityScreen - allStreams:', allStreams.length);
+  
+  // Calculate stats using allStreams (before finalStreams safety check)
+  const activeStreams = allStreams.filter((stream: any) => {
+    const isLocationStream = stream.stream_type === 'location';
+    const isSpatialStream = stream.stream_type === 'spatial';
+    const isBehavioralStream = stream.stream_type === 'behavioral';
+    
+    // For location, spatial, and behavioral, check real-time status
+    if (isLocationStream) return locationTracking || stream.is_enabled;
+    if (isSpatialStream) return spatialEnabled || stream.is_enabled;
+    if (isBehavioralStream) return behavioralEnabled || stream.is_enabled;
+    
+    return stream.is_enabled;
+  }) || [];
+  
+  const totalEarnings = allStreams.reduce((sum: number, stream: any) => {
+    const isLocationStream = stream.stream_type === 'location';
+    const isSpatialStream = stream.stream_type === 'spatial';
+    const isBehavioralStream = stream.stream_type === 'behavioral';
+    
+    const actualDataCount = isLocationStream ? locationDataCount : 
+                          isSpatialStream ? spatialDataCount :
+                          isBehavioralStream ? behavioralDataCount : stream.data_count;
+    
+    return sum + (actualDataCount || 0) * 1; // 1 point per data collected
+  }, 0);
+  
+  const pendingStreams = allStreams.filter((stream: any) => {
+    const isLocationStream = stream.stream_type === 'location';
+    const isSpatialStream = stream.stream_type === 'spatial';
+    const isBehavioralStream = stream.stream_type === 'behavioral';
+    
+    // For location, spatial, and behavioral, check real-time status
+    if (isLocationStream) return !locationTracking && !stream.is_enabled;
+    if (isSpatialStream) return !spatialEnabled && !stream.is_enabled;
+    if (isBehavioralStream) return !behavioralEnabled && !stream.is_enabled;
+    
+    return !stream.is_enabled;
+  }) || [];
 
   const getStreamIcon = (streamType: string) => {
     switch (streamType) {
@@ -589,6 +740,21 @@ const ActivityScreen = () => {
       default: return streamType;
     }
   };
+
+  // Ensure allStreams always has at least the 3 required streams (safety check)
+  const finalStreams = (allStreams && allStreams.length > 0) ? allStreams : (() => {
+    console.warn('ActivityScreen - allStreams is empty, creating emergency fallback streams');
+    return ['location', 'spatial', 'behavioral'].map((type) => ({
+      id: `emergency-fallback-${type}`,
+      stream_type: type,
+      is_enabled: false,
+      data_count: 0,
+      last_sync_at: null,
+      user_id: user?.id || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }));
+  })();
 
   return (
     <ScrollView style={styles.container}>
@@ -620,17 +786,15 @@ const ActivityScreen = () => {
 
         {/* Data Streams */}
         <Text style={styles.sectionTitle}>Data Streams</Text>
-        {filteredStreams?.map((stream: any) => {
+        {finalStreams && finalStreams.length > 0 ? (
+          finalStreams.map((stream: any) => {
           // Special handling for location, spatial, and behavioral streams to show real-time status
           const isLocationStream = stream.stream_type === 'location';
           const isSpatialStream = stream.stream_type === 'spatial';
           const isBehavioralStream = stream.stream_type === 'behavioral';
-          const isEmailMetadataStream = stream.stream_type === 'email_metadata';
           const actualDataCount = isLocationStream ? locationDataCount : 
                                 isSpatialStream ? spatialDataCount :
-                                isBehavioralStream ? behavioralDataCount :
-                                isEmailMetadataStream ? (emailStats?.pointsEarned || 0) :
-                                stream.data_count;
+                                isBehavioralStream ? behavioralDataCount : stream.data_count;
           const potentialEarnings = (actualDataCount || 0) * 1; // 1 point per data collected
           const isEnabled = isLocationStream ? (locationTracking || stream.is_enabled) : 
                           isSpatialStream ? (spatialEnabled || stream.is_enabled) :
@@ -683,93 +847,18 @@ const ActivityScreen = () => {
                 </Text>
               )}
               
-            {/* Email Metadata Collection Section - Only show when stream is enabled */}
-            {stream.stream_type === 'email_metadata' && stream.is_enabled && (
-              <View style={styles.emailCollectionSection}>
-                {/* Auto-Collection Status */}
-                {autoCollectionStatus.isRunning && (
-                  <View style={styles.autoCollectionStatusActive}>
-                    <View style={styles.statusHeader}>
-                      <Icon name="checkmark-circle" size={20} color="#34C759" />
-                      <Text style={styles.statusTitle}>Auto-Collection Active</Text>
-                      <TouchableOpacity 
-                        style={styles.stopButton}
-                        onPress={stopAutoCollection}
-                      >
-                        <Text style={styles.stopButtonText}>Stop</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.statusSubtitle}>
-                      Collecting every {autoCollectionStatus.config.intervalMinutes} minutes
-                    </Text>
-                  </View>
-                )}
-                
-                {/* Commented out: Auto-Collection Disabled section - removed as requested */}
-                {/* {!autoCollectionStatus.isRunning && (
-                  <View style={styles.autoCollectionStatusDisabled}>
-                    <View style={styles.statusHeader}>
-                      <Icon name="warning" size={20} color="#FF9500" />
-                      <Text style={styles.statusTitle}>Auto-Collection Disabled</Text>
-                      <TouchableOpacity 
-                        style={styles.enableButton}
-                        onPress={startAutoCollection}
-                      >
-                        <Text style={styles.enableButtonText}>Enable</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.statusSubtitle}>
-                      Enable to automatically collect emails
-                    </Text>
-                  </View>
-                )} */}
-
-                {/* Re-authentication prompt - only show when session has actually expired */}
-                {autoCollectionStatus.needsReauth && autoCollectionStatus.session.consecutiveFailures > 0 && (
-                  <View style={styles.reauthPrompt}>
-                    <View style={styles.statusHeader}>
-                      <Icon name="warning" size={20} color="#FF3B30" />
-                      <Text style={styles.statusTitle}>Session Expired</Text>
-                      <TouchableOpacity 
-                        style={styles.reauthButton}
-                        onPress={handleReauth}
-                      >
-                        <Text style={styles.reauthButtonText}>Re-auth</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.statusSubtitle}>
-                      Please re-authenticate to continue auto-collection
-                    </Text>
-                  </View>
-                )}
-
-                {/* Manual Collection and Debug Buttons 
-                <View style={styles.manualCollectionSection}>
-                  <TouchableOpacity 
-                    style={[styles.collectButton, isEmailCollecting && styles.collectButtonDisabled]}
-                    onPress={collectEmailMetadata}
-                    disabled={isEmailCollecting}
-                  >
-                    <Icon name="mail" size={16} color="white" style={{ marginRight: 8 }} />
-                    <Text style={styles.collectButtonText}>
-                      {isEmailCollecting ? 'Collecting...' : 'Collect Now'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.debugButton}
-                    onPress={debugEmailCollection}
-                  >
-                    <Icon name="bug" size={16} color="#6b7280" style={{ marginRight: 8 }} />
-                    <Text style={styles.debugButtonText}>Debug</Text>
-                  </TouchableOpacity>
-                </View> */}
-
-              </View>
+            {/* Email Metadata Collection Section - Only render GmailEmailFeatures for Gmail users */}
+            {stream.stream_type === 'email_metadata' && isGmailUser && (
+              <GmailEmailFeatures stream={stream} isEnabled={stream.is_enabled} />
             )}
             </View>
           );
-        })}
+        })
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.cardSubtitle}>No data streams available. Please enable streams in Settings.</Text>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -807,12 +896,12 @@ const SurveysScreen = () => {
         }]);
 
       if (error) {
-        Alert.alert('Error', error.message);
+         Alert.alert('Error', error.message);
         return;
       }
     }
 
-    Alert.alert('Survey', `Opening survey: ${survey.title}`);
+     Alert.alert('Survey', `Opening survey: ${survey.title}`);
   };
 
   const markSurveyCompleted = async (surveyId: string) => {
@@ -828,9 +917,9 @@ const SurveysScreen = () => {
       .eq('survey_id', surveyId);
 
     if (error) {
-      Alert.alert('Error', error.message);
+       Alert.alert('Error', error.message);
     } else {
-      Alert.alert('Success', 'Survey completed! Points have been awarded.');
+       Alert.alert('Success', 'Survey completed! Points have been awarded.');
     }
   };
 
@@ -850,7 +939,7 @@ const SurveysScreen = () => {
         }]);
 
       if (error) {
-        Alert.alert('Error', error.message);
+         Alert.alert('Error', error.message);
         return;
       }
     } else {
@@ -864,12 +953,12 @@ const SurveysScreen = () => {
         .eq('task_id', taskId);
 
       if (error) {
-        Alert.alert('Error', error.message);
+         Alert.alert('Error', error.message);
         return;
       }
     }
 
-    Alert.alert('Success', 'Task completed! Points have been awarded.');
+     Alert.alert('Success', 'Task completed! Points have been awarded.');
   };
 
   return (
@@ -979,12 +1068,27 @@ const SurveysScreen = () => {
 // Settings Screen
 const SettingsScreen = () => {
   const { user, signOut } = useAuth();
+  const queryClient = useQueryClient();
   const { data: profile } = useProfile();
   const { data: dataStreams, isLoading: streamsLoading } = useDataStreams();
   const [activeTab, setActiveTab] = useState('profile');
   const [collectingData, setCollectingData] = useState(false);
   const [spatialService] = useState(() => SpatialDataService.getInstance());
   const [loadingStates, setLoadingStates] = useState<{[key: string]: boolean}>({});
+  const [showErrorLogs, setShowErrorLogs] = useState(false);
+  const [errorLogCount, setErrorLogCount] = useState(0);
+  
+  // Update error log count when component mounts and when logs change
+  useEffect(() => {
+    const updateCount = () => {
+      setErrorLogCount(errorLogger.getLogs().length);
+    };
+    updateCount();
+    const unsubscribe = errorLogger.subscribe(() => {
+      updateCount();
+    });
+    return unsubscribe;
+  }, []);
   
   // Debug state for Gmail OAuth
   const [gmailDebugInfo, setGmailDebugInfo] = useState<{
@@ -1005,6 +1109,95 @@ const SettingsScreen = () => {
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletConnecting, setWalletConnecting] = useState(false);
+  const [showKyc, setShowKyc] = useState(false);
+  const [ZkMeComponent, setZkMeComponent] = useState<React.ComponentType<any> | null>(null);
+  const [zkMeLoading, setZkMeLoading] = useState(false);
+  const [zkMeError, setZkMeError] = useState<string | null>(null);
+  const [checkingKycStatus, setCheckingKycStatus] = useState(false);
+  const [showThirdPartyConfirmation, setShowThirdPartyConfirmation] = useState(false);
+  
+  // Lazy load ZkMe component only when showKyc becomes true
+  useEffect(() => {
+    if (showKyc && !ZkMeComponent && !zkMeLoading) {
+      // Alert.alert('DEBUG', 'Step 2: showKyc is true, starting dynamic import of ZkMeWebView');
+      //console.log('DEBUG: Step 2 - Starting dynamic import of ZkMeWebView');
+      setZkMeLoading(true);
+      setZkMeError(null);
+      
+      // Use dynamic import instead of require to handle errors better
+      import('./components/ZkMeWebView')
+        .then((module) => {
+          // Alert.alert('DEBUG', 'Step 3: ZkMeWebView module imported successfully');
+          //console.log('DEBUG: Step 3 - ZkMeWebView module imported', { module });
+          // Check if showKyc is still true before setting component
+          if (!showKyc) {
+            // Alert.alert('DEBUG', 'Step 3a: showKyc is false, aborting');
+            //console.log('DEBUG: Step 3a - showKyc is false, aborting');
+            setZkMeLoading(false);
+            return;
+          }
+          
+          try {
+            // Alert.alert('DEBUG', 'Step 4: Extracting ZkMeWebView from module');
+            //console.log('DEBUG: Step 4 - Extracting ZkMeWebView from module');
+            const ZkMeWebView = module.default || module.ZkMeWebView;
+            if (!ZkMeWebView) {
+              throw new Error('ZkMe component export is undefined or invalid');
+            }
+            
+            // Validate that it's a React component
+            if (typeof ZkMeWebView !== 'function' && typeof ZkMeWebView !== 'object') {
+              throw new Error('ZkMe component is not a valid React component');
+            }
+            
+            // Alert.alert('DEBUG', 'Step 5: Setting ZkMeComponent state');
+            //console.log('DEBUG: Step 5 - Setting ZkMeComponent state', { ZkMeWebView });
+            setZkMeComponent(() => ZkMeWebView);
+            setZkMeLoading(false);
+            // Alert.alert('DEBUG', 'Step 6: ZkMeComponent state set, zkMeLoading set to false');
+            //console.log('DEBUG: Step 6 - ZkMeComponent state set');
+          } catch (error: any) {
+            console.error('Failed to initialize ZkMe component:', error);
+            const errorMessage = error?.message || 'Failed to initialize KYC verification component';
+            setZkMeError(errorMessage);
+            setZkMeLoading(false);
+             Alert.alert(
+               'KYC Verification Error',
+               'Failed to initialize KYC verification. Please check your configuration and try again later.',
+               [{ text: 'OK', onPress: () => setShowKyc(false) }]
+             );
+            setShowKyc(false);
+          }
+        })
+        .catch((error: any) => {
+          // Only show error if showKyc is still true
+          if (showKyc) {
+            console.error('Failed to load ZkMe component module:', error);
+            const errorMessage = error?.message || 'Failed to load KYC verification component';
+            setZkMeError(errorMessage);
+            setZkMeLoading(false);
+             Alert.alert(
+               'KYC Verification Error',
+               'Failed to load KYC verification component. Please try again later.',
+               [{ text: 'OK', onPress: () => setShowKyc(false) }]
+             );
+            setShowKyc(false);
+          } else {
+            setZkMeLoading(false);
+          }
+        });
+    }
+  }, [showKyc, ZkMeComponent, zkMeLoading]);
+  
+  // Cleanup when showKyc becomes false
+  useEffect(() => {
+    if (!showKyc) {
+      // Reset component state when modal is closed
+      setZkMeComponent(null);
+      setZkMeError(null);
+      setZkMeLoading(false);
+    }
+  }, [showKyc]);
 
   // Auth safety: if user is signed out, avoid rendering settings content
   if (!user) {
@@ -1019,6 +1212,277 @@ const SettingsScreen = () => {
       </ScrollView>
     );
   }
+
+  // Check ZkMe verification status using verifyKycWithZkMeServices from zkMe SDK
+  // Reference: https://docs.zk.me/zkme-dochub/verify-with-zkme-protocol/integration-guide/javascript-sdk/zkkyc-compliance-suite
+  const checkZkMeVerificationStatus = async (): Promise<'verified' | 'pending' | 'error'> => {
+    try {
+      if (!user || !user.email) {
+        console.error('No user or user email found for status check');
+        return 'error';
+      }
+
+      // Get zkMe configuration (appId/mchNo) from database
+      let appId = '';
+      try {
+        const configService = AppConfigurationService.getInstance();
+        const zkmeConfig = await configService.getZkMeConfig();
+        appId = zkmeConfig.mchNo;
+      } catch (error) {
+        console.error('Error fetching ZkMe configuration from database:', error);
+        return 'error';
+      }
+
+      if (!appId) {
+        console.error('zkMe appId (MCH_NO) is not configured in database');
+        return 'error';
+      }
+
+      // Get current app status
+      const currentAppStatus = profile?.kyc_status || 'pending';
+
+      // Check status from zkMe API using verifyKycWithZkMeServices
+      // This calls zkMe's API to check if the user has completed KYC verification
+      // Use user.id as userAccount (must match what's returned by provider.getUserAccounts)
+      // Get programNo from database configuration
+      let programNo: string | undefined;
+      try {
+        const configService = AppConfigurationService.getInstance();
+        const programNoValue = await configService.getConfigValue('zkme_program_no');
+        programNo = programNoValue || undefined;
+      } catch (error) {
+        console.warn('Error fetching zkme_program_no from database, proceeding without it:', error);
+      }
+
+      const { isGrant } = await verifyKycWithZkMeServices(
+        appId,
+        user.id,
+        programNo ? { programNo } : undefined
+      );
+
+      console.log('zkMe verification check result:', { isGrant, currentAppStatus });
+
+      // Flow: If zkMe API returns verified (isGrant = true) but app DB shows pending, update app DB to verified
+      if (isGrant && currentAppStatus === 'pending') {
+        console.log('ZkMe status is verified but app status is pending. Updating app status...');
+        
+        // Update profile status to verified
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ kyc_status: 'verified' })
+          .eq('user_id', user.id);
+
+        if (updateError) {
+          console.error('Error updating profile status:', updateError);
+          return 'error';
+        }
+
+        // Also update the submission if it exists
+        const { data: submission } = await supabase
+          .from('kyc_submissions')
+          .select('id, verified_attributes')
+          .eq('user_id', user.id)
+          .eq('verification_method', 'zkme')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (submission && Array.isArray(submission.verified_attributes)) {
+          // Update verified_attributes to mark as verified
+          const updatedAttributes = submission.verified_attributes.map((cred: any) => ({
+            ...cred,
+            status: 'verified'
+          }));
+
+          const { error: submissionUpdateError } = await supabase
+            .from('kyc_submissions')
+            .update({ verified_attributes: updatedAttributes })
+            .eq('id', submission.id);
+
+          if (submissionUpdateError) {
+            console.error('Error updating submission:', submissionUpdateError);
+          }
+        }
+
+        // Invalidate and refetch profile data immediately
+        queryClient.invalidateQueries(['profile', user.id]);
+        // Refetch immediately to ensure profile state updates before any subsequent checks
+        await queryClient.refetchQueries(['profile', user.id]);
+        return 'verified';
+      }
+
+      // If zkMe says verified and app also says verified, return verified
+      if (isGrant && currentAppStatus === 'verified') {
+        return 'verified';
+      }
+
+      // If zkMe says not verified (isGrant = false), check database as fallback
+      // This handles cases where the API might not have the latest status
+      const { data: submission } = await supabase
+        .from('kyc_submissions')
+        .select('verified_attributes, created_at')
+        .eq('user_id', user.id)
+        .eq('verification_method', 'zkme')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const credentials = submission?.verified_attributes;
+      if (Array.isArray(credentials) && credentials.length > 0) {
+        const hasVerifiedCredential = credentials.some(
+          (cred: any) => cred?.status === 'verified'
+        );
+        
+        // If we have verified credentials in DB, treat as verified regardless of API response
+        if (hasVerifiedCredential) {
+          if (currentAppStatus === 'pending') {
+            // Update profile status to verified
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .update({ kyc_status: 'verified' })
+              .eq('user_id', user.id);
+
+            if (updateError) {
+              console.error('Error updating profile status:', updateError);
+              return 'error';
+            }
+
+            queryClient.invalidateQueries(['profile', user.id]);
+            // Refetch immediately to ensure profile state updates
+            await queryClient.refetchQueries(['profile', user.id]);
+          }
+          return 'verified';
+        }
+      }
+      
+      // If zkMe says not verified and no verified credentials in DB, return pending
+      return 'pending';
+    } catch (error) {
+      console.error('Error checking ZkMe verification status:', error);
+      return 'error';
+    }
+  };
+
+  // KYC completion handler
+  const handleKycComplete = async (result: any) => {
+    try {
+      console.log('KYC verification completed:', result);
+      
+      if (!user) {
+        console.error('No user found for KYC update');
+        Alert.alert('Error', 'No user found. Please log in and try again.');
+        return;
+      }
+
+      // Parse the result from ZkMeWebView
+      // The result should contain verification_id and credentials
+      let verificationPayload: ZkMeVerificationPayload | null = null;
+
+      if (result?.verification_id && result?.credentials) {
+        // Result already has the correct structure
+        verificationPayload = {
+          verification_id: result.verification_id,
+          credentials: result.credentials
+        };
+      } else if (result?.verificationId && result?.credentials) {
+        // Handle camelCase version
+        verificationPayload = {
+          verification_id: result.verificationId,
+          credentials: result.credentials
+        };
+      } else if (result?.type === 'zkme-verification-complete' && result?.result) {
+        // Handle nested result structure
+        const nestedResult = result.result;
+        if (nestedResult?.verification_id || nestedResult?.verificationId) {
+          verificationPayload = {
+            verification_id: nestedResult.verification_id || nestedResult.verificationId,
+            credentials: nestedResult.credentials || []
+          };
+        }
+      } else if (result?.verification_id) {
+        // If only verification_id is present, try to extract credentials from result
+        verificationPayload = {
+          verification_id: result.verification_id,
+          credentials: result.credentials || result.credential || []
+        };
+      }
+
+      if (!verificationPayload || !verificationPayload.verification_id) {
+        console.warn('KYC result missing verification_id, attempting to submit with available data:', result);
+        // If verification_id is missing, we'll still try to update status
+        // but log a warning
+        const { error } = await supabase
+          .from('profiles')
+          .update({ kyc_status: 'verified' })
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('Error updating KYC status:', error);
+          Alert.alert('Error', 'Failed to update KYC status. Please try again.');
+        } else {
+          queryClient.invalidateQueries(['profile', user.id]);
+          Alert.alert('Success', 'KYC verification completed successfully!');
+        }
+        return;
+      }
+
+      // Call the backend API to submit verification and update status to 'verified'
+      console.log('Submitting ZkMe verification to backend:', verificationPayload);
+      const apiResult = await submitZkMeVerification(user.id, verificationPayload);
+
+      if (apiResult?.success !== false) {
+        // Backend successfully updated status to 'verified'
+        // Invalidate and refetch profile data to show updated status
+        queryClient.invalidateQueries(['profile', user.id]);
+        Alert.alert('Success', 'KYC verification completed successfully!');
+      } else {
+        console.error('Backend API returned error:', apiResult);
+        Alert.alert('Error', apiResult?.error || 'Failed to update KYC status. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('KYC completion error:', error);
+      const errorMessage = error?.message || 'Failed to process KYC verification.';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setShowKyc(false);
+    }
+  };
+
+  // KYC error handler
+  const handleKycError = (error: Error | string) => {
+    try {
+      const errorMessage = typeof error === 'string' ? error : error?.message || 'An error occurred during KYC verification';
+      console.error('KYC verification error:', errorMessage, error);
+      
+      // Show user-friendly error message
+      Alert.alert(
+        'Verification Error',
+        errorMessage,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowKyc(false);
+              setZkMeComponent(null);
+              setZkMeError(null);
+              setZkMeLoading(false);
+            }
+          }
+        ]
+      );
+      
+      // Update error state
+      setZkMeError(errorMessage);
+      setZkMeLoading(false);
+    } catch (handlerError) {
+      console.error('Error in handleKycError:', handlerError);
+      // Fallback: just close the modal
+      setShowKyc(false);
+      setZkMeComponent(null);
+      setZkMeError(null);
+      setZkMeLoading(false);
+    }
+  };
 
   // Debug function to update Gmail status
   const updateGmailDebugInfo = async () => {
@@ -1065,11 +1529,6 @@ const SettingsScreen = () => {
     try {
       // Best-effort cleanups; do not block app sign-out on failure
       try {
-        const autoCollectionService = EmailAutoCollectionService.getInstance();
-        autoCollectionService.cleanup();
-      } catch (_) {}
-
-      try {
         const locationService = LocationDataService.getInstance();
         if (locationService.cleanup) {
           await locationService.cleanup();
@@ -1083,18 +1542,61 @@ const SettingsScreen = () => {
         }
       } catch (_) {}
 
+      // Stop and cleanup email auto-collection service
+      // Wrap each operation separately to ensure we continue even if one fails
       try {
-        const gmailAuthService = RealGmailAuthService.getInstance();
-        if (gmailAuthService.signOut) {
-          await gmailAuthService.signOut();
+        const autoCollectionService = EmailAutoCollectionService.getInstance();
+        try {
+          autoCollectionService.stop();
+        } catch (stopError) {
+          console.warn('Error stopping auto-collection (non-blocking):', stopError);
         }
-      } catch (_) {}
-    } finally {
+        try {
+          autoCollectionService.cleanup();
+        } catch (cleanupError) {
+          console.warn('Error cleaning up auto-collection (non-blocking):', cleanupError);
+        }
+      } catch (collectionError) {
+        // Don't block sign out if cleanup fails
+        console.warn('Email auto-collection service error (non-blocking):', collectionError);
+      }
+
+      // Sign out from Gmail if user is a Gmail user
+      // This is non-blocking - we'll proceed with main sign out even if this fails
+      const isGmailUser = user?.email?.endsWith('@gmail.com') || false;
+      if (isGmailUser) {
+        try {
+          const gmailAuthService = RealGmailAuthService.getInstance();
+          if (gmailAuthService && typeof gmailAuthService.signOut === 'function') {
+            // Use Promise.resolve to ensure this doesn't block
+            await Promise.resolve(gmailAuthService.signOut()).catch((gmailError) => {
+              // Don't block sign out if Gmail sign out fails
+              console.warn('Gmail sign out error (non-blocking):', gmailError);
+            });
+          }
+        } catch (gmailError) {
+          // Don't block sign out if Gmail sign out fails
+          console.warn('Gmail sign out error (non-blocking):', gmailError);
+        }
+      }
+      
+      // Sign out from main auth - this should always succeed even if other sign outs failed
+      // The signOut function in AuthContext will clear local state regardless of errors
+      // Wrap in try-catch to ensure no errors propagate
       try {
         await signOut();
+        console.log('User signed out successfully');
       } catch (error) {
-        console.error('Sign out error:', error);
-        Alert.alert('Error', 'Failed to sign out');
+        // Swallow all errors - signOut in AuthContext already clears local state
+        console.warn('Sign out completed (user is signed out, some operations may have failed):', error);
+      }
+    } catch (error) {
+      // Outer catch - ensure we still try to sign out even if cleanup fails
+      try {
+        await signOut();
+      } catch (finalError) {
+        // Swallow all errors - signOut in AuthContext already clears local state
+        console.warn('Sign out completed (user is signed out):', finalError);
       }
     }
   };
@@ -1113,17 +1615,17 @@ const SettingsScreen = () => {
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
           setWalletConnected(true);
-          Alert.alert('Success', 'Wallet connected successfully!');
+           Alert.alert('Success', 'Wallet connected successfully!');
         }
       } else {
-        Alert.alert('Error', 'MetaMask not detected. Please install MetaMask to connect your wallet.');
+         Alert.alert('Error', 'MetaMask not detected. Please install MetaMask to connect your wallet.');
       }
     } catch (error: any) {
       console.error('Wallet connection error:', error);
       if (error.code === 4001) {
-        Alert.alert('Connection Rejected', 'Please connect your wallet to continue.');
+         Alert.alert('Connection Rejected', 'Please connect your wallet to continue.');
       } else {
-        Alert.alert('Connection Error', 'Failed to connect wallet. Please try again.');
+         Alert.alert('Connection Error', 'Failed to connect wallet. Please try again.');
       }
     } finally {
       setWalletConnecting(false);
@@ -1133,7 +1635,7 @@ const SettingsScreen = () => {
   const disconnectWallet = () => {
     setWalletConnected(false);
     setWalletAddress(null);
-    Alert.alert('Disconnected', 'Wallet has been disconnected.');
+     Alert.alert('Disconnected', 'Wallet has been disconnected.');
   };
 
   // Photo change functionality
@@ -1142,23 +1644,25 @@ const SettingsScreen = () => {
       // Request permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant permission to access your photo library.');
+         Alert.alert('Permission Required', 'Please grant permission to access your photo library.');
         return;
       }
 
       // Show action sheet
-      Alert.alert(
-        'Change Profile Photo',
-        'Choose an option',
-        [
-          { text: 'Camera', onPress: () => pickImage('camera') },
-          { text: 'Photo Library', onPress: () => pickImage('library') },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
+       Alert.alert(
+         'Change Profile Photo',
+         'Choose an option',
+         [
+           { text: 'Camera', onPress: () => pickImage('camera') },
+           { text: 'Photo Library', onPress: () => pickImage('library') },
+           { text: 'Cancel', style: 'cancel' }
+         ]
+       );
+      // Default to photo library
+      pickImage('library');
     } catch (error) {
       console.error('Error requesting permissions:', error);
-      Alert.alert('Error', 'Failed to request permissions.');
+       Alert.alert('Error', 'Failed to request permissions.');
     }
   };
 
@@ -1175,7 +1679,7 @@ const SettingsScreen = () => {
       if (source === 'camera') {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Please grant permission to access your camera.');
+           Alert.alert('Permission Required', 'Please grant permission to access your camera.');
           return;
         }
         result = await ImagePicker.launchCameraAsync(options);
@@ -1188,14 +1692,14 @@ const SettingsScreen = () => {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image.');
+       Alert.alert('Error', 'Failed to pick image.');
     }
   };
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
       if (!user) {
-        Alert.alert('Error', 'User not authenticated.');
+         Alert.alert('Error', 'User not authenticated.');
         return;
       }
 
@@ -1218,7 +1722,7 @@ const SettingsScreen = () => {
 
       if (error) {
         console.error('Upload error:', error);
-        Alert.alert('Upload Error', 'Failed to upload image.');
+         Alert.alert('Upload Error', 'Failed to upload image.');
         return;
       }
 
@@ -1235,18 +1739,18 @@ const SettingsScreen = () => {
 
       if (updateError) {
         console.error('Update error:', updateError);
-        Alert.alert('Update Error', 'Failed to update profile.');
+         Alert.alert('Update Error', 'Failed to update profile.');
         return;
       }
 
-      Alert.alert('Success', 'Profile photo updated successfully!');
+       Alert.alert('Success', 'Profile photo updated successfully!');
       
       // Refresh profile data
       // Note: The useProfile hook should automatically refetch due to the update
       
     } catch (error) {
       console.error('Error uploading image:', error);
-      Alert.alert('Error', 'Failed to upload image.');
+       Alert.alert('Error', 'Failed to upload image.');
     }
   };
 
@@ -1278,19 +1782,19 @@ const SettingsScreen = () => {
         throw error;
       }
 
-      Alert.alert(
-        "Data Collection Started",
-        `Successfully triggered ${description} collection. Check your Activity page for updates.`
-      );
+       Alert.alert(
+         "Data Collection Started",
+         `Successfully triggered ${description} collection. Check your Activity page for updates.`
+       );
       
       console.log('Data collection result:', data);
       
     } catch (error: any) {
       console.error('Data collection error:', error);
-      Alert.alert(
-        "Error",
-        `Failed to trigger data collection: ${error?.message || 'Unknown error'}`
-      );
+       Alert.alert(
+         "Error",
+         `Failed to trigger data collection: ${error?.message || 'Unknown error'}`
+       );
     } finally {
       setCollectingData(false);
     }
@@ -1328,7 +1832,7 @@ const SettingsScreen = () => {
               `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`
             ]
           }));
-          Alert.alert('Gmail Required', errorMsg);
+           Alert.alert('Gmail Required', errorMsg);
           return;
         }
         
@@ -1355,103 +1859,78 @@ const SettingsScreen = () => {
               `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`
             ]
           }));
-          Alert.alert('Error', errorMsg);
+           Alert.alert('Error', errorMsg);
           return;
         }
         
         if (!isSignedIn) {
-          // Prompt for Gmail authentication
-          const authResult = await new Promise((resolve) => {
-            Alert.alert(
-              'Gmail Authentication Required',
-              'To enable email metadata collection, you need to sign in with your Gmail account. Would you like to sign in now?',
-              [
-                {
-                  text: 'Cancel',
-                  style: 'cancel',
-                  onPress: () => {
-                    setGmailDebugInfo(prev => ({
-                      ...prev,
-                      debugLogs: [
-                        ...prev.debugLogs.slice(-4),
-                        `[${new Date().toLocaleTimeString()}] Gmail authentication cancelled by user`
-                      ]
-                    }));
-                    resolve(false);
-                  }
-                },
-                {
-                  text: 'Sign In',
-                  onPress: async () => {
-                    try {
-                      setGmailDebugInfo(prev => ({
-                        ...prev,
-                        debugLogs: [
-                          ...prev.debugLogs.slice(-4),
-                          `[${new Date().toLocaleTimeString()}] Starting Gmail authentication...`
-                        ]
-                      }));
-                      
-                      await gmailAuthService.initialize();
-                      setGmailDebugInfo(prev => ({
-                        ...prev,
-                        debugLogs: [
-                          ...prev.debugLogs.slice(-4),
-                          `[${new Date().toLocaleTimeString()}] Gmail service initialized`
-                        ]
-                      }));
-                      
-                      const result = await gmailAuthService.signInWithGmail();
-                      
-                      setGmailDebugInfo(prev => ({
-                        ...prev,
-                        lastError: result.success ? null : result.error || 'Authentication failed',
-                        debugLogs: [
-                          ...prev.debugLogs.slice(-4),
-                          `[${new Date().toLocaleTimeString()}] Gmail authentication result: ${result.success ? 'Success' : 'Failed - ' + (result.error || 'Unknown error')}`
-                        ]
-                      }));
-                      
-                      if (!result.success) {
-                        // Show enhanced error information for developer errors
-                        if (result.debugInfo) {
-                          Alert.alert(
-                            'Authentication Failed', 
-                            result.error || 'Failed to sign in with Gmail',
-                            [
-                              { text: 'OK' },
-                              { 
-                                text: 'Show Debug Info', 
-                                onPress: () => {
-                                  const debugText = JSON.stringify(result.debugInfo, null, 2);
-                                  Alert.alert('Debug Information', debugText, [{ text: 'OK' }]);
-                                }
-                              }
-                            ]
-                          );
-                        } else {
-                          Alert.alert('Authentication Failed', result.error || 'Failed to sign in with Gmail');
-                        }
-                      }
-                      
-                      resolve(result.success);
-                    } catch (error) {
-                      const errorMsg = `Gmail authentication error: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                      setGmailDebugInfo(prev => ({
-                        ...prev,
-                        lastError: errorMsg,
-                        debugLogs: [
-                          ...prev.debugLogs.slice(-4),
-                          `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`
-                        ]
-                      }));
-                      Alert.alert('Authentication Error', errorMsg);
-                      resolve(false);
-                    }
-                  }
+          // Prompt for Gmail authentication - auto-sign in without alert
+          const authResult = await new Promise(async (resolve) => {
+            try {
+              setGmailDebugInfo(prev => ({
+                ...prev,
+                debugLogs: [
+                  ...prev.debugLogs.slice(-4),
+                  `[${new Date().toLocaleTimeString()}] Starting Gmail authentication...`
+                ]
+              }));
+              
+              await gmailAuthService.initialize();
+              setGmailDebugInfo(prev => ({
+                ...prev,
+                debugLogs: [
+                  ...prev.debugLogs.slice(-4),
+                  `[${new Date().toLocaleTimeString()}] Gmail service initialized`
+                ]
+              }));
+              
+              const result = await gmailAuthService.signInWithGmail();
+              
+              setGmailDebugInfo(prev => ({
+                ...prev,
+                lastError: result.success ? null : result.error || 'Authentication failed',
+                debugLogs: [
+                  ...prev.debugLogs.slice(-4),
+                  `[${new Date().toLocaleTimeString()}] Gmail authentication result: ${result.success ? 'Success' : 'Failed - ' + (result.error || 'Unknown error')}`
+                ]
+              }));
+              
+              if (!result.success) {
+                // Show enhanced error information for developer errors
+                if (result.debugInfo) {
+                   Alert.alert(
+                     'Authentication Failed', 
+                     result.error || 'Failed to sign in with Gmail',
+                     [
+                       { text: 'OK' },
+                       { 
+                         text: 'Show Debug Info', 
+                         onPress: () => {
+                           const debugText = JSON.stringify(result.debugInfo, null, 2);
+                           Alert.alert('Debug Information', debugText, [{ text: 'OK' }]);
+                         }
+                       }
+                     ]
+                   );
+                } else {
+                   Alert.alert('Authentication Failed', result.error || 'Failed to sign in with Gmail');
                 }
-              ]
-            );
+              }
+              
+              resolve(result.success);
+            } catch (error) {
+              const errorMsg = `Gmail authentication error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+              setGmailDebugInfo(prev => ({
+                ...prev,
+                lastError: errorMsg,
+                debugLogs: [
+                  ...prev.debugLogs.slice(-4),
+                  `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`
+                ]
+              }));
+               Alert.alert('Authentication Error', errorMsg);
+              resolve(false);
+            }
           });
           
           if (!authResult) {
@@ -1466,7 +1945,7 @@ const SettingsScreen = () => {
           }
           
           // Update debug info after successful authentication
-          //await updateGmailDebugInfo();
+          await updateGmailDebugInfo();
         }
       }
       
@@ -1478,7 +1957,7 @@ const SettingsScreen = () => {
 
       if (error) {
         console.error(`Error toggling stream ${streamId}:`, error);
-        Alert.alert('Error', 'Failed to update data stream');
+         Alert.alert('Error', 'Failed to update data stream');
       } else {
         // Force a refetch of data streams to update the UI
         queryClient.invalidateQueries(['data-streams', user?.id]);
@@ -1486,15 +1965,15 @@ const SettingsScreen = () => {
         
         // Show success message for email_metadata
         if (stream?.stream_type === 'email_metadata' && enabled) {
-          Alert.alert(
-            'Email Collection Enabled',
-            'Email metadata collection is now active. The app will automatically collect your email headers every 30 minutes.'
-          );
+           Alert.alert(
+             'Email Collection Enabled',
+             'Email metadata collection is now active. The app will automatically collect your email headers every 30 minutes.'
+           );
         }
       }
     } catch (error) {
       console.error(`Error toggling stream ${streamId}:`, error);
-      Alert.alert('Error', 'Failed to update data stream');
+       Alert.alert('Error', 'Failed to update data stream');
     } finally {
       setLoadingStates(prev => ({ ...prev, [streamId]: false }));
     }
@@ -1561,6 +2040,7 @@ const SettingsScreen = () => {
   };
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.screenTitle}>Settings</Text>
@@ -1853,9 +2333,9 @@ const SettingsScreen = () => {
                           }));
                           
                           if (testResult.success) {
-                            Alert.alert('Configuration Test', 'OAuth configuration is working correctly!');
+                             Alert.alert('Configuration Test', 'OAuth configuration is working correctly!');
                           } else {
-                            Alert.alert('Configuration Error', testResult.error || 'Configuration test failed');
+                             Alert.alert('Configuration Error', testResult.error || 'Configuration test failed');
                           }
                         } catch (error) {
                           const errorMsg = `Configuration test error: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -1867,7 +2347,7 @@ const SettingsScreen = () => {
                               `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`
                             ]
                           }));
-                          Alert.alert('Test Error', errorMsg);
+                           Alert.alert('Test Error', errorMsg);
                         }
                       }}
                     >
@@ -1882,14 +2362,14 @@ const SettingsScreen = () => {
                           const debugInfo = await gmailAuthService.getDebugInfo();
                           
                           const debugText = JSON.stringify(debugInfo, null, 2);
-                          Alert.alert(
-                            'Detailed Debug Info', 
-                            debugText,
-                            [{ text: 'OK' }],
-                            { userInterfaceStyle: 'light' }
-                          );
+                           Alert.alert(
+                             'Detailed Debug Info', 
+                             debugText,
+                             [{ text: 'OK' }],
+                             { userInterfaceStyle: 'light' }
+                           );
                         } catch (error) {
-                          Alert.alert('Debug Error', error instanceof Error ? error.message : 'Unknown error');
+                           Alert.alert('Debug Error', error instanceof Error ? error.message : 'Unknown error');
                         }
                       }}
                     >
@@ -1921,14 +2401,14 @@ const SettingsScreen = () => {
                             });
                           }
                           
-                          Alert.alert(
-                            'OAuth Configuration Check', 
-                            message,
-                            [{ text: 'OK' }],
-                            { userInterfaceStyle: 'light' }
-                          );
+                           Alert.alert(
+                             'OAuth Configuration Check', 
+                             message,
+                             [{ text: 'OK' }],
+                             { userInterfaceStyle: 'light' }
+                           );
                         } catch (error) {
-                          Alert.alert('OAuth Check Error', error instanceof Error ? error.message : 'Unknown error');
+                           Alert.alert('OAuth Check Error', error instanceof Error ? error.message : 'Unknown error');
                         }
                       }}
                     >
@@ -1949,14 +2429,14 @@ const SettingsScreen = () => {
                             message += `\n\n❌ Error: ${testResults.error}`;
                           }
                           
-                          Alert.alert(
-                            'Gmail Authentication Tests', 
-                            message,
-                            [{ text: 'OK' }],
-                            { cancelable: true }
-                          );
+                           Alert.alert(
+                             'Gmail Authentication Tests', 
+                             message,
+                             [{ text: 'OK' }],
+                             { cancelable: true }
+                           );
                         } catch (error) {
-                          Alert.alert('Test Suite Error', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                           Alert.alert('Test Suite Error', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         }
                       }}
                     >
@@ -1977,14 +2457,14 @@ const SettingsScreen = () => {
                             message += `\n\n❌ Error: ${signInResult.error}`;
                           }
                           
-                          Alert.alert(
-                            'Gmail Sign-In Test', 
-                            message,
-                            [{ text: 'OK' }],
-                            { cancelable: true }
-                          );
+                           Alert.alert(
+                             'Gmail Sign-In Test', 
+                             message,
+                             [{ text: 'OK' }],
+                             { cancelable: true }
+                           );
                         } catch (error) {
-                          Alert.alert('Sign-In Test Error', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                           Alert.alert('Sign-In Test Error', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         }
                       }}
                     >
@@ -2005,14 +2485,14 @@ const SettingsScreen = () => {
                             message += `\n\n❌ Error: ${diagnosticResult.error}`;
                           }
                           
-                          Alert.alert(
-                            'Google Sign-In Diagnostic', 
-                            message,
-                            [{ text: 'OK' }],
-                            { cancelable: true }
-                          );
+                           Alert.alert(
+                             'Google Sign-In Diagnostic', 
+                             message,
+                             [{ text: 'OK' }],
+                             { cancelable: true }
+                           );
                         } catch (error) {
-                          Alert.alert('Diagnostic Error', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                           Alert.alert('Diagnostic Error', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         }
                       }}
                     >
@@ -2053,11 +2533,69 @@ const SettingsScreen = () => {
                 </View>
                 
                 {profile?.kyc_status !== 'verified' && (
-                  <TouchableOpacity style={styles.kycActionButton}>
-                    <Text style={styles.kycActionText}>
-                      {profile?.kyc_status === 'pending' ? 'Check Status' :
-                       profile?.kyc_status === 'rejected' ? 'Try Again' : 'Start Verification'}
-                    </Text>
+                  <TouchableOpacity 
+                    style={styles.kycActionButton}
+                    onPress={async () => {
+                      console.log('DEBUG: Step 1 - KYC button clicked');
+                      
+                      // Flow: On click of "Check Status" button:
+                      // 1. Call verifyKycWithZkMeServices to check status from zkMe API
+                      // 2. If returned verified AND app DB shows pending → update app DB to verified
+                      // 3. If not verified → show confirmation modal before opening zkMe widget
+                      // 4. App UI reads status from Supabase (via useProfile hook) and reflects correct status
+                      
+                      if (profile?.kyc_status === 'pending') {
+                        setCheckingKycStatus(true);
+                        try {
+                          // Call verifyKycWithZkMeServices via checkZkMeVerificationStatus
+                          const status = await checkZkMeVerificationStatus();
+                          
+                          if (status === 'verified') {
+                            // zkMe API returned verified and app DB was updated
+                            // UI will automatically refresh via queryClient.invalidateQueries
+                            Alert.alert(
+                              'Status Updated',
+                              'Your KYC verification has been verified! The status has been updated.',
+                              [{ text: 'OK' }]
+                            );
+                            // Refresh profile data from Supabase - UI will update automatically
+                            queryClient.invalidateQueries(['profile', user?.id]);
+                            setCheckingKycStatus(false);
+                            return;
+                          } else if (status === 'pending') {
+                            // zkMe API says not verified yet, show confirmation modal before opening widget
+                            setCheckingKycStatus(false);
+                            setShowThirdPartyConfirmation(true);
+                            return;
+                          } else {
+                            // Error occurred, but still show confirmation modal as fallback
+                            console.error('Error checking status, showing confirmation modal as fallback');
+                            setCheckingKycStatus(false);
+                            setShowThirdPartyConfirmation(true);
+                            return;
+                          }
+                        } catch (error) {
+                          console.error('Error checking status:', error);
+                          setCheckingKycStatus(false);
+                          // Show confirmation modal instead of directly opening widget
+                          setShowThirdPartyConfirmation(true);
+                          return;
+                        }
+                      }
+                      
+                      // For rejected or not_started status, show confirmation modal before opening widget
+                      setShowThirdPartyConfirmation(true);
+                    }}
+                    disabled={checkingKycStatus}
+                  >
+                    {checkingKycStatus ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.kycActionText}>
+                        {profile?.kyc_status === 'pending' ? 'Check Status' :
+                         profile?.kyc_status === 'rejected' ? 'Try Again' : 'Start Verification'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 )}
               </View>
@@ -2117,7 +2655,7 @@ const SettingsScreen = () => {
                           if (!locationInitialized) {
                             const granted = await requestLocationPermission();
                             if (!granted) {
-                              Alert.alert('Permission Required', 'Location permission is required to collect location data.');
+                               Alert.alert('Permission Required', 'Location permission is required to collect location data.');
                               return;
                             }
                           }
@@ -2131,19 +2669,19 @@ const SettingsScreen = () => {
                           const currentLocation = await locationService.getCurrentLocation();
                           
                           if (currentLocation) {
-                            Alert.alert(
-                              "Location Collected",
-                              `Successfully collected current location: ${currentLocation.coords.latitude.toFixed(6)}, ${currentLocation.coords.longitude.toFixed(6)}`
-                            );
+                             Alert.alert(
+                               "Location Collected",
+                               `Successfully collected current location: ${currentLocation.coords.latitude.toFixed(6)}, ${currentLocation.coords.longitude.toFixed(6)}`
+                             );
                           } else {
-                            Alert.alert("Location Error", "Failed to get current location. Please check your location settings.");
+                             Alert.alert("Location Error", "Failed to get current location. Please check your location settings.");
                           }
                         } catch (error: any) {
                           console.error('Location collection error:', error);
-                          Alert.alert(
-                            "Error",
-                            `Failed to collect location data: ${error?.message || 'Unknown error'}`
-                          );
+                           Alert.alert(
+                             "Error",
+                             `Failed to collect location data: ${error?.message || 'Unknown error'}`
+                           );
                         } finally {
                           setCollectingData(false);
                         }
@@ -2173,7 +2711,7 @@ const SettingsScreen = () => {
                           if (!spatialInitialized) {
                             const granted = await requestSpatialPermission();
                             if (!granted) {
-                              Alert.alert('Permission Required', 'Spatial data collection requires location permission.');
+                               Alert.alert('Permission Required', 'Spatial data collection requires location permission.');
                               return;
                             }
                           }
@@ -2194,19 +2732,19 @@ const SettingsScreen = () => {
                               timestamp: currentLocation.timestamp,
                             });
                             
-                            Alert.alert(
-                              "Spatial Data Collected",
-                              `Successfully processed spatial data for location: ${currentLocation.coords.latitude.toFixed(4)}, ${currentLocation.coords.longitude.toFixed(4)}`
-                            );
+                             Alert.alert(
+                               "Spatial Data Collected",
+                               `Successfully processed spatial data for location: ${currentLocation.coords.latitude.toFixed(4)}, ${currentLocation.coords.longitude.toFixed(4)}`
+                             );
                           } else {
-                            Alert.alert("Location Error", "Failed to get current location for spatial processing.");
+                             Alert.alert("Location Error", "Failed to get current location for spatial processing.");
                           }
                         } catch (error: any) {
                           console.error('Spatial collection error:', error);
-                          Alert.alert(
-                            "Error",
-                            `Failed to collect spatial data: ${error?.message || 'Unknown error'}`
-                          );
+                           Alert.alert(
+                             "Error",
+                             `Failed to collect spatial data: ${error?.message || 'Unknown error'}`
+                           );
                         } finally {
                           setCollectingData(false);
                         }
@@ -2236,7 +2774,7 @@ const SettingsScreen = () => {
                           if (!behavioralInitialized) {
                             const granted = await requestBehavioralPermission();
                             if (!granted) {
-                              Alert.alert('Permission Required', 'Behavioral analytics requires initialization.');
+                               Alert.alert('Permission Required', 'Behavioral analytics requires initialization.');
                               return;
                             }
                           }
@@ -2248,16 +2786,16 @@ const SettingsScreen = () => {
                           // Run behavioral analysis
                           const insights = await analyzeBehavior();
                           
-                          Alert.alert(
-                            "Behavioral Analysis Complete",
-                            `Successfully generated ${insights.length} behavioral insights from your data patterns.`
-                          );
+                           Alert.alert(
+                             "Behavioral Analysis Complete",
+                             `Successfully generated ${insights.length} behavioral insights from your data patterns.`
+                           );
                         } catch (error: any) {
                           console.error('Behavioral analysis error:', error);
-                          Alert.alert(
-                            "Error",
-                            `Failed to analyze behavioral data: ${error?.message || 'Unknown error'}`
-                          );
+                           Alert.alert(
+                             "Error",
+                             `Failed to analyze behavioral data: ${error?.message || 'Unknown error'}`
+                           );
                         } finally {
                           setCollectingData(false);
                         }
@@ -2336,6 +2874,38 @@ const SettingsScreen = () => {
           </View>
         )}
 
+        {/* Debug & Support Section */}
+        {/*<View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Icon name="bug" size={20} color="#007AFF" />
+            <Text style={styles.cardTitle}>Debug & Support</Text>
+          </View>
+          <View style={styles.cardContent}>
+            <TouchableOpacity 
+              style={styles.debugButton}
+              onPress={() => {
+                const logs = errorLogger.getLogs();
+                if (logs.length === 0) {
+                  // Alert.alert('No Errors', 'No error logs found. The app is running smoothly!');
+                } else {
+                  setShowErrorLogs(true);
+                }
+              }}
+            >
+              <View style={styles.debugButtonContent}>
+                <Icon name="document-text" size={20} color="#007AFF" />
+                <View style={styles.debugButtonText}>
+                  <Text style={styles.debugButtonTitle}>View Error Logs</Text>
+                  <Text style={styles.debugButtonSubtitle}>
+                    {errorLogCount} error(s) logged
+                  </Text>
+                </View>
+              </View>
+              <Icon name="chevron-forward" size={20} color="#8E8E93" />
+            </TouchableOpacity>
+          </View>
+        </View> */}
+
         {/* Sign Out */}
         <TouchableOpacity style={[styles.card, styles.signOutCard]} onPress={handleSignOut}>
           <Icon name="log-out" size={20} color="#FF3B30" />
@@ -2343,6 +2913,157 @@ const SettingsScreen = () => {
         </TouchableOpacity>
       </View>
     </ScrollView>
+
+    {/* Third-Party Confirmation Modal */}
+    <ThirdPartyConfirmationModal
+      visible={showThirdPartyConfirmation}
+      onConfirm={() => {
+        setShowThirdPartyConfirmation(false);
+        setShowKyc(true);
+      }}
+      onDecline={() => {
+        setShowThirdPartyConfirmation(false);
+      }}
+      thirdPartyName="zkMe"
+    />
+
+    {/* Error Log Viewer Modal */}
+    <ErrorLogViewer 
+      visible={showErrorLogs} 
+      onClose={() => setShowErrorLogs(false)} 
+    />
+
+    {/* ZkMe KYC Verification Modal - Outside ScrollView */}
+    {showKyc && (
+      <ErrorBoundary 
+        onError={(error) => {
+          console.error('ZkMeWebView Error:', error);
+          setShowKyc(false);
+          setZkMeComponent(null);
+          setZkMeError(null);
+          setZkMeLoading(false);
+           Alert.alert('Error', 'Failed to load KYC verification. Please try again later.');
+        }}
+        fallback={
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#fff' }}>
+            <Text style={{ fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 20 }}>
+              Something went wrong loading KYC verification.
+            </Text>
+            <TouchableOpacity 
+              onPress={() => {
+                setShowKyc(false);
+                setZkMeComponent(null);
+                setZkMeError(null);
+                setZkMeLoading(false);
+              }}
+              style={{ padding: 12, backgroundColor: '#007AFF', borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      >
+        {zkMeLoading && (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>Loading KYC verification...</Text>
+          </View>
+        )}
+        {zkMeError && (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#fff' }}>
+            <Text style={{ fontSize: 16, color: '#FF3B30', textAlign: 'center', marginBottom: 20 }}>
+              {zkMeError}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => {
+                setShowKyc(false);
+                setZkMeComponent(null);
+                setZkMeError(null);
+                setZkMeLoading(false);
+              }}
+              style={{ padding: 12, backgroundColor: '#007AFF', borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!zkMeLoading && !zkMeError && ZkMeComponent && (() => {
+          try {
+            // Alert.alert('DEBUG', 'Step 7: Rendering ZkMeComponent - validating component');
+            console.log('DEBUG: Step 7 - Rendering ZkMeComponent', { 
+              zkMeLoading, 
+              zkMeError, 
+              hasZkMeComponent: !!ZkMeComponent,
+              componentType: typeof ZkMeComponent 
+            });
+            // Ensure ZkMeComponent is a valid React component
+            if (typeof ZkMeComponent !== 'function' && typeof ZkMeComponent !== 'object') {
+              throw new Error('Invalid ZkMe component');
+            }
+            
+            // Alert.alert('DEBUG', 'Step 8: Component validated, creating Component instance');
+            console.log('DEBUG: Step 8 - Component validated, creating Component instance');
+            const Component = ZkMeComponent as React.ComponentType<any>;
+            // Alert.alert('DEBUG', 'Step 9: About to render Component with props');
+            console.log('DEBUG: Step 9 - About to render Component', {
+              visible: showKyc,
+              walletAddress: walletAddress || 'no-wallet'
+            });
+            return (
+              <Component
+                key={`zkme-kyc-${showKyc ? 'open' : 'closed'}-${walletAddress || 'no-wallet'}`}
+                visible={showKyc}
+                onClose={() => {
+                  // Use setTimeout to make close non-blocking and prevent UI hang
+                  setTimeout(() => {
+                    try {
+                      console.log('KYC modal closed by user');
+                      setShowKyc(false);
+                      // State will be reset by the cleanup useEffect
+                    } catch (error) {
+                      console.error('Error closing KYC modal:', error);
+                    }
+                  }, 0);
+                }}
+                onComplete={(result: any) => {
+                  try {
+                    console.log('KYC verification completed successfully');
+                    handleKycComplete(result);
+                  } catch (error) {
+                    console.error('Error in KYC completion handler:', error);
+                    Alert.alert('Error', 'Failed to process KYC completion. Please try again.');
+                    setShowKyc(false);
+                  }
+                }}
+                onError={(error: Error | string) => {
+                  try {
+                    handleKycError(error);
+                  } catch (handlerError) {
+                    console.error('Error in KYC error handler:', handlerError);
+                    // Fallback: just close the modal
+                    setShowKyc(false);
+                    setZkMeComponent(null);
+                    setZkMeError(null);
+                    setZkMeLoading(false);
+                  }
+                }}
+                userId={user?.id}
+                dappName="Aqifi Insight Nexus"
+                chainId="1"
+              />
+            );
+          } catch (error: any) {
+            console.error('Error rendering ZkMeComponent:', error);
+            const errorMessage = error?.message || 'Failed to render KYC verification component';
+            setZkMeError(errorMessage);
+            setZkMeLoading(false);
+            setShowKyc(false);
+            return null;
+          }
+        })()}
+      </ErrorBoundary>
+    )}
+  </View>
   );
 };
 
@@ -2361,6 +3082,7 @@ const AdminScreen = () => {
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   onError?: (error: Error) => void;
+  fallback?: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -2386,7 +3108,14 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   render() {
     if (this.state.hasError) {
-      return null; // Let the parent handle the error display
+      // Return a fallback UI instead of null to prevent blank screen
+      return this.props.fallback || (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            Something went wrong. Please try again.
+          </Text>
+        </View>
+      );
     }
 
     return this.props.children;
@@ -2504,11 +3233,16 @@ const TabNavigator = React.memo(() => {
         component={DashboardScreen}
         options={{ title: 'Dashboard' }}
       />
-      <Tab.Screen 
+      <Tab.Screen
         name="Activity" 
-        component={ActivityScreen}
         options={{ title: 'Activity' }}
-      />
+      >
+        {() => (
+          <ErrorBoundary>
+            <ActivityScreen />
+          </ErrorBoundary>
+        )}
+      </Tab.Screen>
       <Tab.Screen 
         name="Surveys" 
         component={SurveysScreen}
@@ -3120,6 +3854,35 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#FF3B30',
+  },
+  debugButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  debugButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  debugButtonText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  debugButtonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  debugButtonSubtitle: {
+    fontSize: 12,
+    color: '#666',
   },
   // Tab Navigation Styles
   tabContainer: {
@@ -4464,6 +5227,35 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     textAlign: 'center',
   },
+  debugButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  debugButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  debugButtonText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  debugButtonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  debugButtonSubtitle: {
+    fontSize: 12,
+    color: '#666',
+  },
   settingText: {
     fontSize: 16,
     fontWeight: '600',
@@ -4584,44 +5376,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 6,
-  },
-  // Email collection button styles
-  manualCollectionSection: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  collectButton: {
-    flex: 1,
-    backgroundColor: '#3b82f6',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  collectButtonDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  collectButtonText: {
-    color: 'white',
-    fontWeight: '500',
-  },
-  debugButton: {
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  debugButtonText: {
-    color: '#6b7280',
-    fontWeight: '500',
   },
 });
 

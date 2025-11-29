@@ -82,14 +82,24 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         isAccessMediaLocationEnabled: true
       }
     ],
-    [
-      '@react-native-google-signin/google-signin',
-      {
-        iosUrlScheme: 'com.googleusercontent.apps.364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj',
-        androidClientId: '364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com',
-        webClientId: '364847480072-sa8abl7jbo0nisdh5vt2sregmiksgsvs.apps.googleusercontent.com'
-      }
-    ]
+    // Google Sign-In plugin configuration
+    // Note: These values are required at build time for native module configuration
+    // The actual OAuth flow at runtime uses values from the database via AppConfigurationService
+    // Set these environment variables at build time (required for native module setup):
+    // - EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME (e.g., com.googleusercontent.apps.CLIENT_ID_PREFIX)
+    // - EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID (e.g., CLIENT_ID.apps.googleusercontent.com)
+    // - EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID (e.g., CLIENT_ID.apps.googleusercontent.com)
+    // If these are not set, the plugin will be skipped (OAuth will still work via database config at runtime)
+    ...(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID && process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ? [
+      [
+        '@react-native-google-signin/google-signin',
+        {
+          iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME || `com.googleusercontent.apps.${process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID.split('.')[0]}`,
+          androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+          webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+        }
+      ]
+    ] : [])
   ],
   scheme: 'aqifi',
   extra: {
@@ -99,25 +109,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     cli: {
       appVersionSource: 'remote'
     },
-    supabaseUrl: "https://uyamvlctjacvevyfdnez.supabase.co",
-    supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5YW12bGN0amFjdmV2eWZkbmV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NzE3NTQsImV4cCI6MjA2NzI0Nzc1NH0.GustXM94NZXF5oCghzHeRo9NFqRNLtnyaUQMjGCgIOg",
-    googleClientId: "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com",
-    gmailApiKey: "AIzaSyA0mIQdqC2HFih2zRhR9NI8VK6RLD3TV-A",
-    // Google Services configuration for Expo
-    googleServices: {
-      android: {
-        clientId: "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com" // Android Client ID
-      },
-      ios: {
-        clientId: "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com" // iOS Client ID (same as Android for now)
-      },
-      web: {
-        clientId: "364847480072-sa8abl7jbo0nisdh5vt2sregmiksgsvs.apps.googleusercontent.com" // Web Client ID for React Native
-      }
-    }
+    // NOTE: All sensitive configuration values are now stored in the database (app_configuration table).
+    // Only Supabase connection details are loaded from environment variables (required for initial connection).
+    // To update configuration, use the app_configuration table in Supabase.
+    // See: database-app-config-migration.sql and src/services/AppConfigurationService.ts
+    // Supabase connection details must be provided via environment variables:
+    // - EXPO_PUBLIC_SUPABASE_URL
+    // - EXPO_PUBLIC_SUPABASE_ANON_KEY
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
   },
   owner: 'hawkrelteam',
-  runtimeVersion: '1.0.0'
+  runtimeVersion: '1.0.0',
   // Temporarily disabled updates to fix build issues
   // updates: {
   //   url: 'https://u.expo.dev/d18ea8df-9d8f-48b1-b4a5-0a8159055e6d'

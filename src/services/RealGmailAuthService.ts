@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import AppConfigurationService from './AppConfigurationService';
 
 export interface GmailUser {
   id: string;
@@ -42,33 +43,29 @@ class RealGmailAuthService {
 
   /**
    * Get Google Client ID from configuration
+   * Throws ConfigurationError if not available
    */
-  private getClientId(): string {
-    let clientId = Constants.expoConfig?.extra?.googleClientId;
-    if (!clientId) {
-      clientId = "364847480072-f90sdc7j4jjuc00eg5jm6pres76su3pj.apps.googleusercontent.com";
-    }
-    return clientId;
+  private async getClientId(): Promise<string> {
+    const configService = AppConfigurationService.getInstance();
+    const googleConfig = await configService.getGoogleOAuthConfig();
+    return googleConfig.clientId;
   }
 
   /**
    * Get the correct Client ID for the current platform
    */
-  private getPlatformClientId(): string {
-    const clientId = this.getClientId();
-    
-    // For mobile apps, we need to use the web client ID as webClientId
-    // The current client ID appears to be a web client ID, which is correct for webClientId
-    // Using Client ID for platform
-    
+  private async getPlatformClientId(): Promise<string> {
+    const clientId = await this.getClientId();
     return clientId;
   }
 
   /**
    * Get Gmail API Key from configuration
+   * Throws ConfigurationError if not available
    */
-  private getGmailApiKey(): string {
-    return Constants.expoConfig?.extra?.gmailApiKey || "AIzaSyA0mIQdqC2HFih2zRhR9NI8VK6RLD3TV-A";
+  private async getGmailApiKey(): Promise<string> {
+    const configService = AppConfigurationService.getInstance();
+    return await configService.getGmailApiKey();
   }
 
   /**
@@ -80,10 +77,11 @@ class RealGmailAuthService {
     }
 
     try {
-      const clientId = this.getPlatformClientId();
+      const configService = AppConfigurationService.getInstance();
+      const googleConfig = await configService.getGoogleOAuthConfig();
       
-      if (!clientId) {
-        throw new Error('Google Client ID not found in app configuration');
+      if (!googleConfig.clientIdWeb) {
+        throw new Error('Google Web Client ID not found in app configuration');
       }
 
       // Configuring Google Sign-In with client ID
@@ -101,7 +99,7 @@ class RealGmailAuthService {
       // For React Native Google Sign-In, we need to use the Web Client ID
       // The Web Client ID should be created in Google Console for this purpose
       const config = {
-        webClientId: "364847480072-sa8abl7jbo0nisdh5vt2sregmiksgsvs.apps.googleusercontent.com", // Correct Web Client ID
+        webClientId: googleConfig.clientIdWeb, // Web Client ID from database
         offlineAccess: true,
         scopes: [
           'https://www.googleapis.com/auth/gmail.readonly',
@@ -366,19 +364,41 @@ class RealGmailAuthService {
    */
   public async signOut(): Promise<void> {
     try {
-      // Sign out from Google
-      await GoogleSignin.signOut();
+      // Sign out from Google - wrap in try-catch to handle errors gracefully
+      try {
+        // Check if user is signed in before attempting sign out
+        const isSignedIn = await GoogleSignin.isSignedIn();
+        if (isSignedIn) {
+          await GoogleSignin.signOut();
+        }
+      } catch (googleSignOutError) {
+        // Log but don't throw - we'll still clear local storage
+        console.warn('Google Sign-In sign out error (non-blocking):', googleSignOutError);
+      }
       
-      // Clear stored data
-      await AsyncStorage.multiRemove([
-        this.STORAGE_KEYS.ACCESS_TOKEN,
-        this.STORAGE_KEYS.REFRESH_TOKEN,
-        this.STORAGE_KEYS.USER_INFO
-      ]);
+      // Always clear stored data, even if Google sign out failed
+      try {
+        await AsyncStorage.multiRemove([
+          this.STORAGE_KEYS.ACCESS_TOKEN,
+          this.STORAGE_KEYS.REFRESH_TOKEN,
+          this.STORAGE_KEYS.USER_INFO
+        ]);
+      } catch (storageError) {
+        console.warn('Error clearing stored auth data:', storageError);
+        // Try to clear individually as fallback
+        try {
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.ACCESS_TOKEN);
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.REFRESH_TOKEN);
+          await AsyncStorage.removeItem(this.STORAGE_KEYS.USER_INFO);
+        } catch (individualError) {
+          console.warn('Error clearing individual storage items:', individualError);
+        }
+      }
       
       // console.log('Signed out successfully');
     } catch (error) {
-      // console.error('Error signing out:', error);
+      // Ensure we don't throw errors - sign out should always succeed from caller's perspective
+      console.warn('Unexpected error during sign out (non-blocking):', error);
     }
   }
 
@@ -410,20 +430,64 @@ class RealGmailAuthService {
   }
 
   /**
-   * Force refresh access token from Google Sign-In
+   * Refresh access token - tries Google Sign-In SDK first, falls back to OAuth2 refresh token endpoint
    */
   public async refreshAccessToken(): Promise<string | null> {
     try {
-      if (await GoogleSignin.isSignedIn()) {
-        const tokens = await GoogleSignin.getTokens();
-        if (tokens && tokens.accessToken) {
-          // Store the refreshed token
-          await AsyncStorage.setItem(this.STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken);
-          return tokens.accessToken;
+      // First, try using Google Sign-In SDK (simpler, SDK handles refresh automatically)
+      try {
+        if (await GoogleSignin.isSignedIn()) {
+          const tokens = await GoogleSignin.getTokens();
+          if (tokens && tokens.accessToken) {
+            // Store the refreshed token
+            await AsyncStorage.setItem(this.STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken);
+            return tokens.accessToken;
+          }
         }
+      } catch (sdkError) {
+        // SDK method failed, fall through to OAuth2 endpoint method
+        console.log('Google Sign-In SDK token refresh failed, trying OAuth2 endpoint...');
       }
-      return null;
+      
+      // Fallback: Use OAuth2 refresh token endpoint directly
+      const refreshToken = await AsyncStorage.getItem(this.STORAGE_KEYS.REFRESH_TOKEN);
+      if (!refreshToken) {
+        console.log('No refresh token available for OAuth2 refresh');
+        return null;
+      }
+
+      const clientId = await this.getClientId();
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: clientId,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }).toString()
+      });
+
+      if (!response.ok) {
+        console.error('OAuth2 token refresh failed:', response.status);
+        return null;
+      }
+
+      const tokenData = await response.json();
+      const newAccessToken = tokenData.access_token;
+
+      // Store the new access token
+      await AsyncStorage.setItem(this.STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
+
+      // If a new refresh token is provided, update it
+      if (tokenData.refresh_token) {
+        await AsyncStorage.setItem(this.STORAGE_KEYS.REFRESH_TOKEN, tokenData.refresh_token);
+      }
+
+      return newAccessToken;
     } catch (error) {
+      console.error('Error refreshing access token:', error);
       return null;
     }
   }
@@ -488,7 +552,7 @@ class RealGmailAuthService {
         throw new Error('No access token available');
       }
 
-      const apiKey = this.getGmailApiKey();
+      const apiKey = await this.getGmailApiKey();
       
       // Build query parameters
       const params = new URLSearchParams({
@@ -541,7 +605,7 @@ class RealGmailAuthService {
         throw new Error('No access token available');
       }
 
-      const apiKey = this.getGmailApiKey();
+      const apiKey = await this.getGmailApiKey();
       const response = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?key=${apiKey}`,
         {
@@ -573,56 +637,14 @@ class RealGmailAuthService {
     }
   }
 
-  /**
-   * Refresh access token using refresh token
-   */
-  public async refreshAccessToken(): Promise<string | null> {
-    try {
-      const refreshToken = await AsyncStorage.getItem(this.STORAGE_KEYS.REFRESH_TOKEN);
-      if (!refreshToken) {
-        // console.log('No refresh token available');
-        return null;
-      }
-
-      const clientId = this.getClientId();
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: clientId,
-          refresh_token: refreshToken,
-          grant_type: 'refresh_token',
-        }).toString()
-      });
-
-      if (!response.ok) {
-        // console.error('Token refresh failed:', response.status);
-        return null;
-      }
-
-      const tokenData = await response.json();
-      const newAccessToken = tokenData.access_token;
-
-      // Store the new access token
-      await AsyncStorage.setItem(this.STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
-
-      // console.log('Access token refreshed successfully');
-      return newAccessToken;
-    } catch (error) {
-      // console.error('Error refreshing access token:', error);
-      return null;
-    }
-  }
 
   /**
    * Test configuration
    */
   public async testConfiguration(): Promise<{ success: boolean; error?: string; details?: any }> {
     try {
-      const clientId = this.getClientId();
-      const apiKey = this.getGmailApiKey();
+      const clientId = await this.getClientId();
+      const apiKey = await this.getGmailApiKey();
 
       if (!clientId) {
         return {
@@ -761,8 +783,8 @@ class RealGmailAuthService {
    */
   public async getDebugInfo(): Promise<any> {
     try {
-      const clientId = this.getClientId();
-      const apiKey = this.getGmailApiKey();
+      const clientId = await this.getClientId();
+      const apiKey = await this.getGmailApiKey();
       
       // Test each component individually
       const componentTests = {
@@ -875,8 +897,8 @@ class RealGmailAuthService {
     const recommendations: string[] = [];
     
     try {
-      const clientId = this.getClientId();
-      const apiKey = this.getGmailApiKey();
+      const clientId = await this.getClientId();
+      const apiKey = await this.getGmailApiKey();
       const packageName = Constants.expoConfig?.android?.package || Constants.expoConfig?.ios?.bundleIdentifier;
       const appName = Constants.expoConfig?.name;
       
