@@ -7,7 +7,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isAuthenticated: boolean;
-  signUp: (email: string, password: string, firstName?: string, lastName?: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, firstName?: string, lastName?: string, referralCode?: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   updatePassword: (newPassword: string) => Promise<{ error: any }>;
@@ -48,18 +48,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const signUp = async (email: string, password: string, firstName?: string, lastName?: string) => {
+  const signUp = async (email: string, password: string, firstName?: string, lastName?: string, referralCode?: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      // Store referral code in user metadata
+      const userMetadata: any = {
+        first_name: firstName,
+        last_name: lastName,
+      };
+      
+      if (referralCode) {
+        userMetadata.referral_code = referralCode;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          }
+          data: userMetadata
         }
       });
+
+      // If signup successful and referral code provided, create participant in Viral Loops
+      if (!error && data.user && referralCode) {
+        try {
+          const ViralloopsService = (await import('../services/ViralloopsService')).default;
+          const viralloopsService = ViralloopsService.getInstance();
+          const initialized = await viralloopsService.initialize();
+          
+          if (initialized && viralloopsService.hasApiKey()) {
+            // Create participant in Viral Loops with referral code
+            await viralloopsService.createParticipant({
+              email,
+              firstName,
+              lastName,
+              referredByCode: referralCode,
+            });
+            console.log('Participant created in Viral Loops with referral code');
+          }
+        } catch (vlError) {
+          // Log but don't fail signup if Viral Loops fails
+          console.warn('Failed to create Viral Loops participant during signup:', vlError);
+        }
+      }
+
       return { error };
     } catch (error) {
       console.error('Sign up error:', error);

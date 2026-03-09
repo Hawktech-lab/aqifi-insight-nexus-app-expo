@@ -113,11 +113,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Only Supabase connection details are loaded from environment variables (required for initial connection).
     // To update configuration, use the app_configuration table in Supabase.
     // See: database-app-config-migration.sql and src/services/AppConfigurationService.ts
-    // Supabase connection details must be provided via environment variables:
-    // - EXPO_PUBLIC_SUPABASE_URL
-    // - EXPO_PUBLIC_SUPABASE_ANON_KEY
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+    // Supabase connection details can be provided via environment variables, or will use fallback values:
+    // - EXPO_PUBLIC_SUPABASE_URL (optional, falls back to hardcoded value)
+    // - EXPO_PUBLIC_SUPABASE_ANON_KEY (optional, falls back to hardcoded value)
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "https://uyamvlctjacvevyfdnez.supabase.co",
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5YW12bGN0amFjdmV2eWZkbmV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NzE3NTQsImV4cCI6MjA2NzI0Nzc1NH0.GustXM94NZXF5oCghzHeRo9NFqRNLtnyaUQMjGCgIOg",
   },
   owner: 'hawkrelteam',
   runtimeVersion: '1.0.0',

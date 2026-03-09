@@ -128,10 +128,35 @@ class AppConfigurationService {
 
   /**
    * Get a specific configuration value
+   * For optional configs, this method will try to fetch directly from database
+   * if getAppConfigs() fails (e.g., due to missing required configs)
    */
   public async getConfigValue(key: string): Promise<string | null> {
-    const configs = await this.getAppConfigs();
-    return configs[key] || null;
+    try {
+      const configs = await this.getAppConfigs();
+      return configs[key] || null;
+    } catch (error) {
+      // If getAppConfigs() fails (e.g., missing required configs),
+      // try to fetch the specific key directly from database
+      // This allows optional configs to be read even if required configs are missing
+      try {
+        const { data, error: dbError } = await supabase
+          .from('app_configuration')
+          .select('config_value')
+          .eq('config_key', key)
+          .eq('is_active', true)
+          .single();
+
+        if (dbError || !data) {
+          return null;
+        }
+
+        return data.config_value || null;
+      } catch (dbError) {
+        // If database query also fails, return null
+        return null;
+      }
+    }
   }
 
   /**
